@@ -128,6 +128,33 @@ export function loadConfig(configPath) {
     );
   }
 
+  // Resolve Auth tokens
+  if (config.auth) {
+    const envAuthKeys = loadKeysFromEnv('AUTH');
+    const directAuthToken = process.env.AUTH_TOKEN;
+    const directAuthTokens = process.env.AUTH_TOKENS;
+
+    const mergedAuthTokens = [...(config.auth.tokens || []), ...envAuthKeys];
+    if (directAuthToken && directAuthToken.trim()) mergedAuthTokens.push(directAuthToken.trim());
+    if (directAuthTokens) {
+      for (const k of directAuthTokens.split(',')) {
+        if (k.trim()) mergedAuthTokens.push(k.trim());
+      }
+    }
+
+    const finalAuthTokens = [];
+    for (const k of mergedAuthTokens) {
+      if (typeof k === 'string' && k.startsWith('$')) {
+        const envVal = process.env[k.slice(1)];
+        if (envVal && envVal.trim()) finalAuthTokens.push(envVal.trim());
+      } else if (k && typeof k === 'string' && k.trim()) {
+        finalAuthTokens.push(k.trim());
+      }
+    }
+
+    config.auth.tokens = [...new Set(finalAuthTokens)];
+  }
+
   return { success: true, config, name: config.name };
 }
 
@@ -184,6 +211,33 @@ export function createDefaultConfig(overrides = {}) {
     config.providers.ollama,
     'OLLAMA'
   );
+
+  // Resolve Auth tokens
+  if (config.auth) {
+    const envAuthKeys = loadKeysFromEnv('AUTH');
+    const directAuthToken = process.env.AUTH_TOKEN;
+    const directAuthTokens = process.env.AUTH_TOKENS;
+
+    const mergedAuthTokens = [...(config.auth.tokens || []), ...envAuthKeys];
+    if (directAuthToken && directAuthToken.trim()) mergedAuthTokens.push(directAuthToken.trim());
+    if (directAuthTokens) {
+      for (const k of directAuthTokens.split(',')) {
+        if (k.trim()) mergedAuthTokens.push(k.trim());
+      }
+    }
+
+    const finalAuthTokens = [];
+    for (const k of mergedAuthTokens) {
+      if (typeof k === 'string' && k.startsWith('$')) {
+        const envVal = process.env[k.slice(1)];
+        if (envVal && envVal.trim()) finalAuthTokens.push(envVal.trim());
+      } else if (k && typeof k === 'string' && k.trim()) {
+        finalAuthTokens.push(k.trim());
+      }
+    }
+
+    config.auth.tokens = [...new Set(finalAuthTokens)];
+  }
 
   return config;
 }
