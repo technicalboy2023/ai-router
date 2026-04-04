@@ -1,0 +1,39 @@
+{
+  "name": "universal-ai-router",
+  "version": "1.0.0",
+  "description": "Production-grade Universal AI Router — multi-provider, multi-router LLM gateway with OpenAI compatibility",
+  "main": "src/index.js",
+  "type": "module",
+  "bin": {
+    "ai-router": "./bin/ai-router.js"
+  },
+  "scripts": {
+    "dev": "node src/worker.js",
+    "start": "node bin/ai-router.js start",
+    "start-all": "node bin/ai-router.js start-all",
+    "stop": "node bin/ai-router.js stop",
+    "status": "node bin/ai-router.js status",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": ["ai","router","openai","llm","gateway","openrouter","ollama","gemini","streaming","sse"],
+  "author": "AMAN",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "pino": "^9.4.0",
+    "pino-pretty": "^11.2.0",
+    "undici": "^6.19.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

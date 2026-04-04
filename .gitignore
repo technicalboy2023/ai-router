@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+node_modules/
+npm-debug.log*
+logs/
+*.log
+usage*.json
+usage*.json.tmp
+.ai-router-pids.json
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

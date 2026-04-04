@@ -1,0 +1,91 @@
+{
+  "name": "default",
+  "port": 8000,
+  "host": "0.0.0.0",
+  "providers": {
+    "openrouter": {
+      "enabled": true,
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "keys": [],
+      "envPrefix": "OPENROUTER",
+      "defaultModel": "openrouter/auto"
+    },
+    "ollama": {
+      "enabled": true,
+      "baseUrl": "https://ollama.com/v1",
+      "keys": [],
+      "envPrefix": "OLLAMA",
+      "defaultModel": "llama3"
+    },
+    "gemini": {
+      "enabled": true,
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+      "keys": [],
+      "envPrefix": "GEMINI",
+      "defaultModel": "gemini-1.5-flash"
+    },
+    "groq": {
+      "enabled": true,
+      "baseUrl": "https://api.groq.com/openai/v1",
+      "keys": [],
+      "envPrefix": "GROQ",
+      "defaultModel": "llama3-8b-8192"
+    }
+  },
+  "routing": {
+    "strategy": "model-based",
+    "providerOrder": [
+      "groq",
+      "openrouter",
+      "gemini",
+      "ollama"
+    ],
+    "modelMapping": {
+      "llama*": "groq",
+      "mixtral*": "groq",
+      "gemma*": "groq"
+    }
+  },
+  "fallback": {
+    "models": [],
+    "providers": [
+      "groq",
+      "openrouter",
+      "gemini",
+      "ollama"
+    ],
+    "maxRetries": 4,
+    "backoff": {
+      "initial": 500,
+      "factor": 2,
+      "max": 16000
+    }
+  },
+  "cache": {
+    "enabled": true,
+    "ttl": 30,
+    "maxSize": 512
+  },
+  "performance": {
+    "maxConnections": 300,
+    "maxKeepAlive": 80,
+    "keepAliveTimeout": 30000,
+    "timeoutConnect": 10000,
+    "timeoutRead": 120000
+  },
+  "logging": {
+    "level": "info",
+    "file": "logs/gateway.log",
+    "console": true
+  },
+  "auth": {
+    "enabled": false,
+    "tokens": [],
+    "adminTokens": []
+  },
+  "rateLimit": {
+    "enabled": false,
+    "windowMs": 60000,
+    "maxRequests": 100
+  }
+}
