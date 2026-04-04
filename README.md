@@ -4,20 +4,21 @@
 
 <br/>
 
-[![npm version](https://img.shields.io/npm/v/universal-ai-router?color=6366f1&label=npm&style=for-the-badge)](https://npmjs.com/package/universal-ai-router)
-[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
+[![Version](https://img.shields.io/badge/version-1.0.0-6366f1?style=for-the-badge)](https://github.com/technicalboy2023/ai-router)
+[![Node.js](https://img.shields.io/badge/Node.js-LTS%20%28v20%2B%29-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-a855f7?style=for-the-badge)](LICENSE)
 [![OpenAI Compatible](https://img.shields.io/badge/OpenAI-Compatible-412991?style=for-the-badge&logo=openai&logoColor=white)](https://platform.openai.com/docs/api-reference)
+[![ESM](https://img.shields.io/badge/ESM-Native%20Modules-f59e0b?style=for-the-badge&logo=javascript&logoColor=white)](https://nodejs.org/api/esm.html)
 [![GitHub Stars](https://img.shields.io/github/stars/technicalboy2023/ai-router?style=for-the-badge&color=f59e0b&logo=github)](https://github.com/technicalboy2023/ai-router/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/technicalboy2023/ai-router?style=for-the-badge&color=6366f1&logo=github)](https://github.com/technicalboy2023/ai-router/network/members)
 
 <br/>
 
-> **The open-source AI gateway that gives you smart failover, multi-key rotation, and response caching — across Groq, Gemini, Ollama & OpenRouter — through a single OpenAI-compatible endpoint.**
+> **Production-grade, open-source AI gateway — unifying Groq, Gemini, OpenRouter, Ollama, OpenClaw & OpenCode behind a single OpenAI-compatible endpoint. Smart failover, multi-key rotation, response caching, 4 routing strategies, and a powerful CLI — all in one.**
 
 <br/>
 
-[🚀 Get Started](#-installation) · [📖 Docs](#️-configuration) · [💡 Examples](#-usage-examples) · [🤝 Contributing](#-contributing)
+[🚀 Quick Start](#-installation) · [⚙️ Configuration](#-configuration) · [🌐 API Reference](#-api-endpoints) · [💻 Usage](#-usage-examples) · [🖥️ CLI](#️-cli-reference) · [🤝 Contributing](#-contributing)
 
 </div>
 
@@ -25,11 +26,15 @@
 
 ## 🤔 The Problem It Solves
 
-Building with multiple AI providers is painful. You deal with **rate limits**, **different SDKs**, **key rotation headaches**, and **zero fallback** when an API goes down.
+Building production AI apps is painful:
 
-**Universal AI Router fixes all of that in one shot.**
+- 💸 **Rate limits** kill your app at peak traffic
+- 🔑 **One API key** = single point of failure
+- 🔀 **Different SDKs** per provider = messy codebase
+- 💀 **No fallback** when Groq or Gemini goes down
+- 💰 **Redundant API costs** for repeated prompts
 
-It sits between your app and every major AI provider — acting as a battle-tested, self-hosted AI gateway. One endpoint. One API format. Infinite resilience.
+**Universal AI Router eliminates all of this.** It's a self-hosted AI gateway that sits between your app and every major LLM provider. One endpoint, one format, infinite resilience — built for developers who run real workloads.
 
 ---
 
@@ -37,25 +42,34 @@ It sits between your app and every major AI provider — acting as a battle-test
 
 | Feature | Description |
 |---|---|
-| 🔁 **OpenAI-Compatible API** | Drop-in replacement. Use `/v1/chat/completions` — no SDK changes needed |
-| ⚡ **Smart Failover** | Groq down? Gemini takes over. Automatically. Instantly. |
-| 🔑 **Multi-Key Rotation** | Add 10 Groq keys, rotate them to bypass rate limits effortlessly |
-| 🧠 **Response Caching** | Same prompt = zero API cost the second time. Saves money at scale |
-| 🌙 **Background Daemon** | Close the terminal. The router stays alive using PM2 |
-| 🔀 **Multi-Provider Support** | Groq · Gemini · Ollama · OpenRouter — all unified |
-| 🛡️ **Auth Protection** | Lock your router with a secret token. No unauthorized access |
-| ⚙️ **Fully Configurable** | Custom port, provider order, model mapping — all via JSON config |
-| 🖥️ **Global CLI** | `ai-router start`, `stop`, `status`, `logs` — manage everything from terminal |
-| 🔌 **n8n / Make / Zapier Ready** | Plug into any no-code tool that supports OpenAI-style requests |
+| 🔁 **OpenAI-Compatible API** | Drop-in replacement at `/v1/chat/completions` — zero SDK changes |
+| ⚡ **Smart Failover** | Automatic provider switching on failure with exponential backoff |
+| 🔑 **Multi-Key Rotation** | Add unlimited keys per provider — health-scored rotation bypasses rate limits |
+| 🧠 **Response Caching** | In-memory TTL cache — same prompt costs zero tokens the second time |
+| 🎯 **4 Routing Strategies** | `model-based`, `priority`, `latency-aware`, `round-robin` — pick your strategy |
+| 🌙 **Background Daemon** | Runs as a persistent background process — close terminal, router stays alive |
+| 🔀 **6 Provider Support** | Groq · Gemini · OpenRouter · Ollama · OpenClaw · OpenCode — all unified |
+| 📊 **Live Metrics & Usage** | `/metrics`, `/usage`, `/health` endpoints with per-key telemetry |
+| 🛡️ **Auth & Rate Limiting** | Token-based auth + sliding-window IP rate limiter built-in |
+| 🔧 **Admin API** | Reset cooldowns & clear cache via authenticated admin endpoints |
+| 🌊 **Streaming SSE** | Full streaming support — responses pipe directly to your client |
+| 🛠️ **Tool Call Support** | OpenAI function calling / tool use — handled natively |
+| 🖥️ **Powerful Global CLI** | `init`, `start`, `stop`, `restart`, `status`, `remove` — full lifecycle management |
+| ⚙️ **Multi-Router Support** | Run multiple named routers on different ports simultaneously |
+| 🔌 **n8n / Make / Zapier Ready** | Works with any OpenAI-compatible no-code platform |
 
 ---
 
 ## 🛠 Tech Stack
 
-![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?style=flat-square&logo=node.js&logoColor=white)
-![Express](https://img.shields.io/badge/Express.js-Backend-000000?style=flat-square&logo=express&logoColor=white)
-![PM2](https://img.shields.io/badge/PM2-Process%20Manager-2B037A?style=flat-square&logo=pm2&logoColor=white)
-![OpenAI SDK](https://img.shields.io/badge/OpenAI-Compatible-412991?style=flat-square&logo=openai&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-LTS-339933?style=flat-square&logo=node.js&logoColor=white)
+![Express](https://img.shields.io/badge/Express.js-4.x-000000?style=flat-square&logo=express&logoColor=white)
+![ESM](https://img.shields.io/badge/ES%20Modules-Native-f59e0b?style=flat-square&logo=javascript&logoColor=white)
+![Pino](https://img.shields.io/badge/Pino-Fast%20Logger-green?style=flat-square)
+![Undici](https://img.shields.io/badge/Undici-HTTP%20Client-6366f1?style=flat-square)
+![Zod](https://img.shields.io/badge/Zod-Schema%20Validation-3068b7?style=flat-square)
+![Commander](https://img.shields.io/badge/Commander.js-CLI-red?style=flat-square)
+![Vitest](https://img.shields.io/badge/Vitest-Testing-729b1a?style=flat-square)
 ![Groq](https://img.shields.io/badge/Groq-API-F55036?style=flat-square)
 ![Google Gemini](https://img.shields.io/badge/Google-Gemini-4285F4?style=flat-square&logo=google&logoColor=white)
 ![OpenRouter](https://img.shields.io/badge/OpenRouter-API-6366f1?style=flat-square)
@@ -65,18 +79,16 @@ It sits between your app and every major AI provider — acting as a battle-test
 
 ## 📦 Installation
 
-Choose your setup method below:
-
 ---
 
 ### 🖥️ Option A — Local Machine (Windows / macOS)
 
-> **Requirement:** Node.js v20+ — [Download here](https://nodejs.org)
+> **Requirement:** Node.js LTS (v20+) — [Download here](https://nodejs.org)
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/technicalboy2023/ai-router.git
-cd universal-ai-router
+cd ai-router
 
 # 2. Install dependencies
 npm install
@@ -85,168 +97,194 @@ npm install
 npm link
 ```
 
-> ✅ You now have access to the `ai-router` command globally in your terminal.
+> ✅ `ai-router` command is now available globally in your terminal.
 
 ---
 
 ### 🐧 Option B — Linux VPS (Ubuntu 22.04) — Recommended for Production
 
-This is the **recommended setup** if you want to run the router 24/7 on a VPS (Linode, DigitalOcean, Vultr, Hetzner, etc.)
+> Perfect for 24/7 hosting on Linode, DigitalOcean, Vultr, Hetzner, Contabo, etc.
 
 #### Step 1 — System Update & Dependencies
 
 ```bash
-# Update package list
 sudo apt update && sudo apt upgrade -y
-
-# Install Git and curl
 sudo apt install -y git curl
 ```
 
-#### Step 2 — Install Node.js v20 (via NodeSource)
+#### Step 2 — Install Node.js LTS (via NodeSource)
 
 ```bash
-# Add NodeSource repo for Node.js LTS (latest stable)
+# Add NodeSource LTS repo
 curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
 
 # Install Node.js
 sudo apt install -y nodejs
 
-# Verify installation
-node -v    # should show v20.x.x
-npm -v     # should show 10.x.x
+# Verify
+node -v    # v22.x.x or latest LTS
+npm -v
 ```
 
-#### Step 3 — Clone & Install the Router
+#### Step 3 — Clone & Install
 
 ```bash
-# Clone the repo
 git clone https://github.com/technicalboy2023/ai-router.git
-cd universal-ai-router
-
-# Install dependencies
+cd ai-router
 npm install
-
-# Register global CLI command
 sudo npm link
 ```
 
 #### Step 4 — Open Firewall Port
 
 ```bash
-# Allow port 8000 through UFW firewall
 sudo ufw allow 8000/tcp
 sudo ufw reload
-
-# Verify UFW status
 sudo ufw status
 ```
 
 #### Step 5 — Run as Background Daemon (PM2)
 
 ```bash
-# Install PM2 globally (process manager — keeps router alive after reboot)
+# Install PM2 globally
 sudo npm install -g pm2
 
-# Start the router with PM2
+# Start the router
 pm2 start npm --name "ai-router" -- run dev
 
-# Save PM2 process list (auto-restart on reboot)
+# Save process list
 pm2 save
 
-# Enable PM2 to start on system boot
+# Enable auto-start on reboot (run the command PM2 outputs!)
 pm2 startup systemd
-# ⚠️ Copy-paste the command PM2 outputs and run it!
 
-# Check router is running
+# Verify
 pm2 status
 pm2 logs ai-router
 ```
 
-> ✅ Router is now running at `http://YOUR_VPS_IP:8000` — **survives reboots automatically!**
+> ✅ Router running at `http://YOUR_VPS_IP:8000` — **survives reboots automatically!**
 
-#### 🔍 Useful PM2 Commands
+#### Useful PM2 Commands
 
 ```bash
-pm2 status                  # Check if router is alive
-pm2 logs ai-router          # Live logs
+pm2 status                  # Check all running processes
+pm2 logs ai-router          # Stream live logs
 pm2 restart ai-router       # Restart after config changes
 pm2 stop ai-router          # Stop the router
-pm2 delete ai-router        # Remove from PM2 completely
-```
-
-#### 🌐 Test from Outside the VPS
-
-```bash
-# Run this from your local machine (replace with your VPS IP)
-curl -X POST http://YOUR_VPS_IP:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer my_super_secret_token" \
-  -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello!"}]}'
+pm2 delete ai-router        # Remove from PM2
 ```
 
 ---
 
-## 🔑 Configuration
+## ⚙️ Configuration
 
-### Step 1 — Create your `.env` file
-
-In the project root, create a `.env` file and add your API keys:
+### Step 1 — Create `.env` File
 
 ```env
-# ── Provider Keys ─────────────────────────────────────────
-# Add multiple keys separated by commas to enable rotation
-OPENROUTER_KEYS=sk-or-v1-key1,sk-or-v1-key2,sk-or-v1-key3
-GEMINI_KEY_1=AIzaSy_your_gemini_key_here
-GROQ_KEY_1=gsk_your_groq_key_here
-GROQ_KEY_2=gsk_your_second_groq_key_here   # optional, for rotation
+# ── Groq (add multiple keys for rotation) ─────────────────
+GROQ_KEY_1=gsk_your_first_groq_key
+GROQ_KEY_2=gsk_your_second_groq_key
+
+# ── Google Gemini ──────────────────────────────────────────
+GEMINI_KEY_1=AIzaSy_your_gemini_key
+
+# ── OpenRouter ────────────────────────────────────────────
+OPENROUTER_KEY_1=sk-or-v1-your_key
+OPENROUTER_KEY_2=sk-or-v1-your_second_key
+
+# ── OpenCode Zen ──────────────────────────────────────────
+OPENCODE_KEY_1=your_opencode_key
+
+# ── OpenClaw ──────────────────────────────────────────────
+OPENCLAW_KEY_1=your_openclaw_key
 
 # ── Security ──────────────────────────────────────────────
-# Set a password to protect your router from unauthorized use
 AUTH_TOKEN=my_super_secret_token
+ADMIN_TOKEN=my_admin_secret_token
 ```
 
-### Step 2 — Tune `config/default.json` (Optional)
+> ⚠️ **Never commit `.env` to Git.** Add it to `.gitignore`.
+
+---
+
+### Step 2 — Tune `config/default.json`
 
 ```json
 {
+  "name": "default",
   "port": 8000,
-  "providerOrder": ["groq", "gemini", "openrouter"],
-  "modelMap": {
-    "llama*": "groq",
-    "gemini*": "gemini",
-    "gpt*": "openrouter"
-  }
+  "host": "0.0.0.0",
+
+  "routing": {
+    "strategy": "model-based",
+    "providerOrder": ["groq", "openrouter", "gemini", "ollama"],
+    "modelMapping": {
+      "llama*":   "groq",
+      "mixtral*": "groq",
+      "gemma*":   "groq",
+      "gemini*":  "gemini",
+      "gpt*":     "openrouter"
+    }
+  },
+
+  "fallback": {
+    "providers": ["groq", "openrouter", "gemini", "ollama"],
+    "maxRetries": 4,
+    "backoff": { "initial": 500, "factor": 2, "max": 16000 }
+  },
+
+  "cache":     { "enabled": true, "ttl": 30, "maxSize": 512 },
+  "auth":      { "enabled": true, "tokens": ["my_super_secret_token"], "adminTokens": ["my_admin_secret_token"] },
+  "rateLimit": { "enabled": true, "windowMs": 60000, "maxRequests": 100 },
+  "logging":   { "level": "info", "file": "logs/gateway.log", "console": true }
 }
 ```
 
 | Key | Description |
 |---|---|
-| `port` | Port the router listens on (default: `8000`) |
-| `providerOrder` | Failover priority — first provider is primary |
-| `modelMap` | Route specific model names to specific providers |
+| `routing.strategy` | `model-based` · `priority` · `latency-aware` · `round-robin` |
+| `routing.modelMapping` | Glob patterns → provider (`"llama*": "groq"`) |
+| `fallback.maxRetries` | Provider switches before giving up (default: 4) |
+| `fallback.backoff` | Exponential backoff in ms (initial → max) |
+| `cache.ttl` | Cache TTL in minutes |
+| `auth.enabled` | Toggle Bearer token authentication |
+| `rateLimit.windowMs` | Sliding window duration in ms |
 
 ---
 
 ## 🚀 Start the Router
 
 ```bash
-# Quick start (foreground, with live logs)
+# Development — foreground with live logs
 npm run dev
 
 # ✅ Router live at → http://localhost:8000
 ```
 
 ```bash
-# Production start (background daemon via PM2)
+# Production — named instance in background
 ai-router start myRouter -c config/default.json
 ```
 
 ---
 
-## 💻 Usage Examples
+## 🌐 API Endpoints
 
-Your router is now a **drop-in OpenAI replacement**. Point any OpenAI-compatible client at `http://localhost:8000`.
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `POST` | `/v1/chat/completions` | User | Main LLM endpoint — OpenAI-compatible |
+| `GET` | `/v1/models` | User | List all models across all providers |
+| `GET` | `/health` | None | Liveness probe — provider & key summary |
+| `GET` | `/metrics` | None | Per-key telemetry — requests, errors, tokens, latency |
+| `GET` | `/usage` | None | Anonymized per-key usage counters |
+| `GET` | `/router/status` | None | Routing engine status |
+| `POST` | `/admin/reset-cooldowns` | Admin | Reset all rate-limited/cooled-down keys |
+| `POST` | `/admin/cache/clear` | Admin | Flush the response cache |
+
+---
+
+## 💻 Usage Examples
 
 ### 🐍 Python (openai library)
 
@@ -255,148 +293,191 @@ import openai
 
 client = openai.OpenAI(
     base_url="http://localhost:8000/v1",
-    api_key="my_super_secret_token"       # your AUTH_TOKEN
+    api_key="my_super_secret_token"
 )
 
 response = client.chat.completions.create(
-    model="openrouter/auto",              # or "groq/llama3-70b-8192", "gemini-pro", etc.
-    messages=[
-        {"role": "user", "content": "Explain quantum computing in simple terms."}
-    ]
+    model="llama3-8b-8192",
+    messages=[{"role": "user", "content": "Explain neural networks simply."}]
 )
-
 print(response.choices[0].message.content)
 ```
 
-### 🖥️ cURL (Quick Test)
+### 🌊 Streaming (Python)
+
+```python
+stream = client.chat.completions.create(
+    model="gemini-1.5-flash",
+    messages=[{"role": "user", "content": "Write a poem about space."}],
+    stream=True
+)
+for chunk in stream:
+    print(chunk.choices[0].delta.content or "", end="", flush=True)
+```
+
+### 🖥️ cURL
 
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer my_super_secret_token" \
-  -d '{
-    "model": "gpt-4o",
-    "messages": [{"role": "user", "content": "Hello from Universal AI Router!"}]
-  }'
+  -d '{"model": "openrouter/auto", "messages": [{"role": "user", "content": "Hello!"}]}'
+```
+
+### 📊 Health Check
+
+```bash
+curl http://localhost:8000/health
 ```
 
 ### 🔗 n8n / Make / Zapier
 
-In your no-code tool's **HTTP Request node**, set:
-- **URL:** `http://your-server-ip:8000/v1/chat/completions`
+- **URL:** `http://YOUR_VPS_IP:8000/v1/chat/completions`
 - **Method:** `POST`
-- **Auth Header:** `Bearer my_super_secret_token`
+- **Header:** `Authorization: Bearer my_super_secret_token`
 - **Body:** Standard OpenAI JSON payload
 
-> Works out of the box with n8n's **OpenAI node** — just change the base URL.
+> Works natively with n8n's **OpenAI node** — just change the base URL.
 
 ---
 
 ## 🖥️ CLI Reference
 
 ```bash
-# Start a named router instance (runs in background)
-ai-router start myRouter -c config/default.json
+# Initialize a new named router config
+ai-router init myRouter --port 8000
 
-# View all running router instances
+# Start a named router (background)
+ai-router start myRouter -c config/myRouter.json
+
+# Start ALL routers defined in config/
+ai-router start-all
+
+# Check status of all running routers
 ai-router status
 
-# Stream live logs for a router
+# Stream live logs
 ai-router logs myRouter
 
-# Stop a running router
+# Restart a router (pick up config changes)
+ai-router restart myRouter
+
+# Stop a specific router
 ai-router stop myRouter
+
+# Stop ALL running routers
+ai-router stop-all
+
+# Remove a router config
+ai-router remove myRouter
 ```
 
-> Run multiple routers on different ports for different projects — each fully isolated.
+---
+
+## 🎯 Routing Strategies
+
+| Strategy | How It Works | Best For |
+|---|---|---|
+| `model-based` | Routes by model name glob patterns | Predictable provider assignment |
+| `priority` | Tries providers in `providerOrder` sequence | Simple primary + fallback setup |
+| `latency-aware` | Prefers provider with lowest avg response time | Latency-sensitive apps |
+| `round-robin` | Distributes evenly across all providers | Load balancing |
 
 ---
 
 ## 📁 Project Structure
 
 ```
-universal-ai-router/
+ai-router/
+│
+├── bin/
+│   └── ai-router.js              # Global CLI entrypoint
 │
 ├── config/
-│   └── default.json          # Provider order, port, model mapping
+│   └── default.json              # Full router configuration
 │
 ├── src/
-│   ├── index.js              # Express server entry point
-│   ├── router.js             # Core routing & failover logic
-│   ├── cache.js              # Response caching engine
-│   ├── keyRotator.js         # Multi-key round-robin rotation
-│   └── providers/
-│       ├── groq.js           # Groq API adapter
-│       ├── gemini.js         # Google Gemini adapter
-│       ├── openrouter.js     # OpenRouter adapter
-│       └── ollama.js         # Ollama (local) adapter
+│   ├── index.js                  # Main export
+│   ├── worker.js                 # Dev server entry (npm run dev)
+│   │
+│   ├── cli/
+│   │   ├── orchestrator.js       # PM2 process manager wrapper
+│   │   └── commands/             # init, start, startAll, stop, stopAll,
+│   │                             # restart, status, logs, remove
+│   ├── config/
+│   │   ├── loader.js             # Config parser & merger
+│   │   └── schema.js             # Zod validation schema
+│   │
+│   ├── providers/
+│   │   ├── BaseProvider.js       # Abstract provider class
+│   │   ├── ProviderRegistry.js   # Provider registry & lookup
+│   │   ├── GroqProvider.js       # Groq
+│   │   ├── GeminiProvider.js     # Google Gemini
+│   │   ├── OpenRouterProvider.js # OpenRouter
+│   │   ├── OllamaProvider.js     # Ollama (local)
+│   │   ├── OpenClawProvider.js   # OpenClaw AI
+│   │   └── OpenCodeProvider.js   # OpenCode Zen
+│   │
+│   ├── router_core/
+│   │   ├── KeyRegistry.js        # Per-provider key pool
+│   │   ├── KeyHealth.js          # Health scoring per key
+│   │   ├── ResponseCache.js      # In-memory TTL cache
+│   │   └── UsageStore.js         # Usage counter persistence
+│   │
+│   ├── server/
+│   │   ├── app.js                # Express app bootstrap
+│   │   ├── middleware/           # auth, cors, rateLimiter,
+│   │   │                         # errorHandler, requestId
+│   │   └── routes/               # chatCompletions, models, health,
+│   │                             # metrics, usage, routerStatus, admin
+│   └── services/
+│       ├── RoutingEngine.js      # 4-strategy routing logic
+│       ├── FallbackEngine.js     # Retry + failover
+│       ├── KeyManager.js         # Key selection & rotation
+│       ├── ToolCallHandler.js    # OpenAI tool/function calls
+│       ├── ResponseNormalizer.js # Unified response format
+│       └── ErrorNormalizer.js    # Unified error format
 │
-├── cli/
-│   └── ai-router.js          # Global CLI entrypoint
-│
-├── .env                      # Your API keys (never commit this!)
-├── .env.example              # Template for .env setup
+├── .env                          # ⚠️ Your keys (never commit!)
+├── .env.example                  # Template for .env
 ├── package.json
 └── README.md
 ```
 
 ---
 
-## 📸 Screenshots
-
-> *Screenshots coming soon — contributions welcome!*
-
-```
-┌─────────────────────────────────────────────────┐
-│  🌌 Universal AI Router — Running on :8000      │
-│  ─────────────────────────────────────────────  │
-│  ✅ Provider: Groq       [PRIMARY]              │
-│  ✅ Provider: Gemini     [FAILOVER 1]           │
-│  ✅ Provider: OpenRouter [FAILOVER 2]           │
-│  🔑 Keys Loaded: 4 | Cache Hits: 12            │
-│  📡 Requests Served: 847 | Errors: 0           │
-└─────────────────────────────────────────────────┘
-```
-
----
-
-## 🌐 Live Demo
-
-> 🚧 Self-hosted demo coming soon. [Star the repo](https://github.com/technicalboy2023/ai-router) to get notified!
-
----
-
 ## 🤝 Contributing
 
-Contributions are what make open source thrive. All PRs are welcome!
+All contributions welcome!
 
 ```bash
-# 1. Fork the repo and clone your fork
+# Fork + clone
 git clone https://github.com/technicalboy2023/ai-router.git
+cd ai-router
 
-# 2. Create a feature branch
-git checkout -b feature/my-awesome-feature
+# Create feature branch
+git checkout -b feature/add-mistral-provider
 
-# 3. Make your changes, then commit
-git commit -m "feat: add support for Mistral AI provider"
+# Run tests
+npm test
 
-# 4. Push and open a Pull Request
-git push origin feature/my-awesome-feature
+# Commit + push + open PR
+git commit -m "feat: add Mistral AI provider"
+git push origin feature/add-mistral-provider
 ```
 
-**Ideas for contributions:**
-- 🔌 New provider adapters (Mistral, Cohere, Claude, Together AI)
-- 📊 Usage dashboard / web UI
+**Good first contributions:**
+- 🔌 New provider adapter (Mistral, Cohere, Together AI, Anthropic)
+- 📊 Web dashboard UI for metrics
+- 🐳 Docker / docker-compose setup
 - 🧪 Test coverage improvements
-- 📝 Documentation & examples
+- 📝 Docs & usage examples
 
 ---
 
 ## 🛡 License
 
-This project is licensed under the **MIT License** — free for personal and commercial use.
-
-See [`LICENSE`](LICENSE) for full details.
+MIT License — free for personal and commercial use. See [`LICENSE`](LICENSE) for full details.
 
 ---
 
@@ -404,13 +485,11 @@ See [`LICENSE`](LICENSE) for full details.
 
 <div align="center">
 
-**Built with ❤️ by [Your Name / Brand]**
+**Built with ❤️ by [AMAN](https://github.com/technicalboy2023)**
 
 [![GitHub](https://img.shields.io/badge/GitHub-@technicalboy2023-181717?style=for-the-badge&logo=github)](https://github.com/technicalboy2023)
-[![Twitter](https://img.shields.io/badge/Twitter-@YOUR_HANDLE-1DA1F2?style=for-the-badge&logo=twitter&logoColor=white)](https://twitter.com/YOUR_HANDLE)
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](https://linkedin.com/in/YOUR_PROFILE)
 
-*Self-hosted AI infrastructure enthusiast. Building tools that make AI accessible, resilient, and free from vendor lock-in.*
+*Self-hosted infrastructure enthusiast. Building open-source tools for AI developers who refuse vendor lock-in.*
 
 </div>
 
@@ -418,7 +497,7 @@ See [`LICENSE`](LICENSE) for full details.
 
 ## ⭐ Support the Project
 
-If this project saved you time, money, or frustration — **give it a star!** It helps others discover it and motivates continued development.
+If this saved you time, money, or debugging pain — a star means everything.
 
 <div align="center">
 
@@ -426,7 +505,7 @@ If this project saved you time, money, or frustration — **give it a star!** It
 
 **⭐ Star · 🍴 Fork · 📢 Share**
 
-*Every star makes this project more discoverable. Thank you!*
+*Every star helps more developers discover this project. Thank you!*
 
 </div>
 
@@ -434,7 +513,7 @@ If this project saved you time, money, or frustration — **give it a star!** It
 
 ## 🔍 Keywords
 
-`ai gateway` · `openai proxy` · `llm router` · `groq api` · `google gemini` · `openrouter` · `ollama` · `ai failover` · `api key rotation` · `self-hosted ai` · `open source llm` · `n8n ai` · `ai rate limit bypass` · `openai compatible` · `local ai server`
+`ai gateway` · `openai proxy` · `llm router` · `groq api` · `google gemini` · `openrouter` · `ollama` · `openclaw` · `opencode` · `ai failover` · `api key rotation` · `self-hosted ai` · `open source llm` · `n8n ai` · `ai rate limit bypass` · `openai compatible` · `local ai server` · `llm proxy` · `multi-provider ai` · `ai load balancer`
 
 ---
 
