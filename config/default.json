@@ -79,7 +79,7 @@
     "console": true
   },
   "auth": {
-    "enabled": true,
+    "enabled": false,
     "tokens": [],
     "adminTokens": []
   },
