@@ -48,7 +48,7 @@ const GroqConfigSchema = z.object({
 // ── Routing Config ────────────────────────────────────────────────────────────
 
 const RoutingConfigSchema = z.object({
-  strategy: z.enum(['priority', 'model-based', 'cost-aware', 'latency-aware', 'round-robin']).default('model-based'),
+  strategy: z.enum(['priority', 'model-based', 'latency-aware', 'round-robin']).default('model-based'),
   providerOrder: z.array(z.string()).default(['groq', 'openrouter', 'gemini', 'ollama']),
   modelMapping: z.record(z.string(), z.string()).default({
     'llama*': 'groq',

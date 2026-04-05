@@ -513,6 +513,131 @@ ai-router/
 
 ---
 
+## 🔄 Updating the Router
+
+After making changes locally (or when a new version is available on GitHub), follow these steps to update the router on your VPS or cloud platform.
+
+### Option A — VPS (PM2 + Git)
+
+```bash
+# 1. SSH into your VPS
+ssh user@YOUR_VPS_IP
+
+# 2. Navigate to the project directory
+cd ~/ai-router
+
+# 3. Pull the latest changes from GitHub
+git pull origin main
+
+# 4. Install any new/updated dependencies
+npm install
+
+# 5. Restart all running routers to pick up changes
+pm2 restart all
+
+# 6. Verify everything is running
+pm2 status
+pm2 logs ai-router --lines 20
+```
+
+> 💡 **Tip:** Your `.env` and `config/*.json` files won't be overwritten by `git pull` — they're either gitignored or only yours.
+
+### Option B — Render / Railway / Cloud Platforms
+
+If your router is deployed on **Render**, **Railway**, or similar:
+
+1. **Push your changes** to GitHub:
+   ```bash
+   git add .
+   git commit -m "fix: update router logic"
+   git push origin main
+   ```
+2. **Auto-deploy:** Most cloud platforms auto-detect the push and redeploy automatically.
+3. **Manual deploy:** If auto-deploy is off, go to your platform dashboard → click **"Manual Deploy"** → select the latest commit.
+
+> ✅ No SSH needed — cloud platforms handle the restart for you.
+
+### Option C — Quick Config-Only Update (No Code Changes)
+
+If you just edited `config/default.json` or `.env` on the VPS directly:
+
+```bash
+# Just restart — no git pull needed
+pm2 restart ai-router
+
+# Or restart a specific named router
+pm2 restart myrouter
+```
+
+---
+
+## 🗑️ Complete Uninstall & Cleanup
+
+To fully remove the AI Router from your system — **including all processes, configs, logs, and the CLI command.**
+
+### Step 1 — Stop & Remove All Router Processes
+
+```bash
+# Stop all running routers
+pm2 stop all
+
+# Delete all router processes from PM2
+pm2 delete all
+
+# Remove PM2 startup script (optional — if you don't use PM2 for anything else)
+pm2 unstartup systemd
+pm2 save --force
+```
+
+### Step 2 — Unlink the Global CLI Command
+
+```bash
+# Navigate to the project directory
+cd ~/ai-router
+
+# Remove the global 'ai-router' command
+sudo npm unlink
+```
+
+### Step 3 — Delete the Project Files
+
+```bash
+# Go back to home directory
+cd ~
+
+# Delete the entire project folder
+rm -rf ai-router
+```
+
+### Step 4 — Clean Up Remaining Data (Optional)
+
+```bash
+# Remove PM2 logs related to ai-router
+pm2 flush
+
+# Close the firewall port (if you opened one)
+sudo ufw delete allow 8000/tcp
+sudo ufw delete allow 8001/tcp   # if you had a second router
+sudo ufw reload
+```
+
+### Step 5 — Verify Everything Is Gone
+
+```bash
+# Should return "command not found"
+ai-router status
+
+# Should show no processes
+pm2 status
+
+# Should show the folder no longer exists
+ls ~/ai-router
+```
+
+> ✅ **That's it — your system is 100% clean.** No leftover configs, daemons, or orphan processes.
+
+---
+
 ## 🤝 Contributing
 
 All contributions welcome!
