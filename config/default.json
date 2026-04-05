@@ -35,8 +35,8 @@
   "routing": {
     "strategy": "model-based",
     "providerOrder": [
-      "groq",
       "openrouter",
+      "groq",
       "gemini",
       "ollama"
     ],
@@ -49,8 +49,8 @@
   "fallback": {
     "models": [],
     "providers": [
-      "groq",
       "openrouter",
+      "groq",
       "gemini",
       "ollama"
     ],
