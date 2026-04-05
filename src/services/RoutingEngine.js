@@ -33,6 +33,17 @@ export class RoutingEngine {
    * @returns {{ provider: import('../providers/BaseProvider.js').BaseProvider, model: string }|null}
    */
   route(requestedModel, opts = {}) {
+    // Top-Level Explicit Routing: Auto-detect explicit provider prefix (e.g., 'openrouter/auto' -> 'openrouter')
+    if (requestedModel && requestedModel.includes('/')) {
+      const prefix = requestedModel.split('/')[0].toLowerCase();
+      if (this.providerRegistry.has(prefix)) {
+        const provider = this.providerRegistry.get(prefix);
+        if (provider?.isAvailable()) {
+          return { provider, model: requestedModel };
+        }
+      }
+    }
+
     switch (this.strategy) {
       case 'model-based':
         return this._routeByModel(requestedModel, opts);
