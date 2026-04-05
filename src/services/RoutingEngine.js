@@ -36,9 +36,9 @@ export class RoutingEngine {
     // Top-Level Explicit Routing: Auto-detect explicit provider prefix (e.g., 'openrouter/auto' -> 'openrouter')
     if (requestedModel && requestedModel.includes('/')) {
       const prefix = requestedModel.split('/')[0].toLowerCase();
-      if (this.providerRegistry.has(prefix)) {
-        const provider = this.providerRegistry.get(prefix);
-        if (provider?.isAvailable()) {
+      const provider = this.providerRegistry.get(prefix);
+      if (provider) {
+        if (provider.isAvailable()) {
           return { provider, model: requestedModel };
         }
       }
