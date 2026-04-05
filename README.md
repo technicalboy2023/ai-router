@@ -14,7 +14,7 @@
 
 <br/>
 
-> **Production-grade, open-source AI gateway — unifying Groq, Gemini, OpenRouter, Ollama, OpenClaw & OpenCode behind a single OpenAI-compatible endpoint. Smart failover, multi-key rotation, response caching, 4 routing strategies, and a powerful CLI — all in one.**
+> **Production-grade, open-source AI gateway — unifying Groq, Gemini, OpenRouter, and Ollama behind a single OpenAI-compatible endpoint. Smart failover, multi-key rotation, response caching, 4 routing strategies, and a powerful CLI — all in one.**
 
 <br/>
 
@@ -48,7 +48,7 @@ Building production AI apps is painful:
 | 🧠 **Response Caching** | In-memory TTL cache — same prompt costs zero tokens the second time |
 | 🎯 **4 Routing Strategies** | `model-based`, `priority`, `latency-aware`, `round-robin` — pick your strategy |
 | 🌙 **Background Daemon** | Runs as a persistent background process — close terminal, router stays alive |
-| 🔀 **6 Provider Support** | Groq · Gemini · OpenRouter · Ollama · OpenClaw · OpenCode — all unified |
+| 🔀 **4 Provider Support** | Groq · Gemini · OpenRouter · Ollama — all unified |
 | 📊 **Live Metrics & Usage** | `/metrics`, `/usage`, `/health` endpoints with per-key telemetry |
 | 🛡️ **Auth & Rate Limiting** | Token-based auth + sliding-window IP rate limiter built-in |
 | 🔧 **Admin API** | Reset cooldowns & clear cache via authenticated admin endpoints |
@@ -192,12 +192,6 @@ GEMINI_KEY_1=AIzaSy_your_gemini_key
 # ── OpenRouter ────────────────────────────────────────────
 OPENROUTER_KEY_1=sk-or-v1-your_key
 OPENROUTER_KEY_2=sk-or-v1-your_second_key
-
-# ── OpenCode Zen ──────────────────────────────────────────
-OPENCODE_KEY_1=your_opencode_key
-
-# ── OpenClaw ──────────────────────────────────────────────
-OPENCLAW_KEY_1=your_openclaw_key
 
 # ── Security ──────────────────────────────────────────────
 AUTH_TOKEN=my_super_secret_token
@@ -414,9 +408,7 @@ ai-router/
 │   │   ├── GroqProvider.js       # Groq
 │   │   ├── GeminiProvider.js     # Google Gemini
 │   │   ├── OpenRouterProvider.js # OpenRouter
-│   │   ├── OllamaProvider.js     # Ollama (local)
-│   │   ├── OpenClawProvider.js   # OpenClaw AI
-│   │   └── OpenCodeProvider.js   # OpenCode Zen
+│   │   └── OllamaProvider.js     # Ollama (local)
 │   │
 │   ├── router_core/
 │   │   ├── KeyRegistry.js        # Per-provider key pool
@@ -513,7 +505,7 @@ If this saved you time, money, or debugging pain — a star means everything.
 
 ## 🔍 Keywords
 
-`ai gateway` · `openai proxy` · `llm router` · `groq api` · `google gemini` · `openrouter` · `ollama` · `openclaw` · `opencode` · `ai failover` · `api key rotation` · `self-hosted ai` · `open source llm` · `n8n ai` · `ai rate limit bypass` · `openai compatible` · `local ai server` · `llm proxy` · `multi-provider ai` · `ai load balancer`
+`ai gateway` · `openai proxy` · `llm router` · `groq api` · `google gemini` · `openrouter` · `ollama` · `ai failover` · `api key rotation` · `self-hosted ai` · `open source llm` · `n8n ai` · `ai rate limit bypass` · `openai compatible` · `local ai server` · `llm proxy` · `multi-provider ai` · `ai load balancer`
 
 ---
 

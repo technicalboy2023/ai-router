@@ -275,13 +275,7 @@ export class GeminiProvider extends BaseProvider {
       }
     }
 
-    const errorChunk = {
-      id: newCompletionId(), object: 'chat.completion.chunk',
-      created: Math.floor(Date.now() / 1000), model,
-      choices: [{ index: 0, delta: { content: 'Error: All Gemini keys exhausted.' }, finish_reason: 'stop' }],
-    };
-    yield `data: ${JSON.stringify(errorChunk)}\n\n`;
-    yield 'data: [DONE]\n\n';
+    throw Object.assign(new Error('All Gemini keys exhausted.'), { statusCode: 503, type: 'exhausted' });
   }
 
   // ── Models ──────────────────────────────────────────────────────────────

@@ -341,21 +341,12 @@ export class OpenRouterProvider extends BaseProvider {
       }
     }
 
-    // All keys exhausted — synthetic error chunk
+    // All keys exhausted
     this.logger.error({ requestId, model }, 'All keys exhausted for streaming');
-    const errorChunk = {
-      id: newCompletionId(),
-      object: 'chat.completion.chunk',
-      created: Math.floor(Date.now() / 1000),
-      model,
-      choices: [{
-        index: 0,
-        delta: { content: 'Error: All OpenRouter keys exhausted.' },
-        finish_reason: 'stop',
-      }],
-    };
-    yield `data: ${JSON.stringify(errorChunk)}\n\n`;
-    yield 'data: [DONE]\n\n';
+    throw Object.assign(
+      new Error('All OpenRouter API keys exhausted. Please try again later.'),
+      { statusCode: 503, type: 'exhausted' }
+    );
   }
 
   // ── Models endpoint ─────────────────────────────────────────────────────

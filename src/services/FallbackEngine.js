@@ -55,12 +55,24 @@ export class FallbackEngine {
 
       try {
         if (stream) {
-          // Streaming handled differently: we return the async generator.
-          // Wait, if the provider fails before yielding the first chunk, we could catch and fallback.
-          // Native streams in BaseProvider use generators, so we can't easily fallback inside a yielding generator unless we buffer.
-          // So streaming fallback is limited. For now, try returning the stream.
-          // The provider internally has multi-layer retry for its keys.
-          return provider.stream(messages, model, { extraParams, requestId, useCache, signal });
+          // Streaming handled differently: we pull the first chunk to test if the stream is alive.
+          // This allows providers that throw errors (e.g. 400 validations, or exhaustion) immediately
+          // before sending data to be caught, triggering cross-provider fallback for streams!
+          const generator = provider.stream(messages, model, { extraParams, requestId, useCache, signal });
+          const iterator = generator[Symbol.asyncIterator] ? generator[Symbol.asyncIterator]() : generator;
+          
+          let firstResult;
+          try {
+            firstResult = await iterator.next();
+          } catch (streamInitErr) {
+            // Re-throw so FallbackEngine loop can catch it and try the next target
+            throw streamInitErr;
+          }
+
+          return (async function* () {
+            if (!firstResult.done) yield firstResult.value;
+            yield* iterator;
+          })();
         }
 
         const res = await provider.call(messages, model, { extraParams, requestId, useCache, signal });
