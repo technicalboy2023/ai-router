@@ -263,6 +263,81 @@ ai-router start myRouter -c config/default.json
 
 ---
 
+## ➕ Adding a New Router
+
+You can run **multiple routers simultaneously** on the same server — each on a different port, with its own config, auth token, and provider priority.
+
+### Step 1 — Create a new config file
+
+Copy `config/default.json` and give it a new name:
+
+```bash
+cp config/default.json config/myrouter.json
+```
+
+### Step 2 — Edit the new config file
+
+Open `config/myrouter.json` and change the following values:
+
+#### 🔴 Mandatory Changes (Must Edit — or router will crash / conflict)
+
+| Field | Where | What to Change |
+|---|---|---|
+| `"name"` | Top level | Change to a unique name e.g. `"myrouter"` |
+| `"port"` | Top level | Change to a **different port** e.g. `8001`, `8080` |
+| `"logging.file"` | `logging` block | Change to a new log file e.g. `"logs/myrouter.log"` |
+
+> ⚠️ **Two routers cannot share the same port.** If they do, the second one will crash with "Port already in use".
+
+#### 🟢 Optional Changes (Only if you want different behavior)
+
+| Field | Where | Why You'd Change It |
+|---|---|---|
+| `"auth.tokens"` | `auth` block | Give this router a separate API password |
+| `"routing.providerOrder"` | `routing` block | Prioritise a different provider first (e.g. `["gemini", "openrouter", "groq", "ollama"]`) |
+| `"fallback.providers"` | `fallback` block | Control which providers act as fallbacks |
+| `"rateLimit.maxRequests"` | `rateLimit` block | Set a higher/lower request cap for this router |
+
+#### Example: Minimal new router config
+
+```json
+{
+  "name": "myrouter",
+  "port": 8001,
+  "host": "0.0.0.0",
+
+  "routing": {
+    "strategy": "model-based",
+    "providerOrder": ["openrouter", "gemini", "groq", "ollama"]
+  },
+
+  "fallback": {
+    "providers": ["openrouter", "gemini", "groq", "ollama"],
+    "maxRetries": 4,
+    "backoff": { "initial": 500, "factor": 2, "max": 16000 }
+  },
+
+  "cache":     { "enabled": true, "ttl": 30, "maxSize": 512 },
+  "auth":      { "enabled": true, "tokens": ["my_router2_token"], "adminTokens": ["my_router2_admin"] },
+  "rateLimit": { "enabled": true, "windowMs": 60000, "maxRequests": 100 },
+  "logging":   { "level": "info", "file": "logs/myrouter.log", "console": true }
+}
+```
+
+### Step 3 — Start the new router
+
+```bash
+# Open firewall for the new port first (Linux VPS only)
+sudo ufw allow 8001/tcp
+
+# Start the new router
+ai-router start myrouter -c config/myrouter.json
+```
+
+> ✅ Now both routers are running: **`:8000`** (default) and **`:8001`** (myrouter) — completely independent.
+
+---
+
 ## 🌐 API Endpoints
 
 | Method | Endpoint | Auth | Description |
