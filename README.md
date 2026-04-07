@@ -346,6 +346,7 @@ ai-router start myrouter -c config/myrouter.json
 |---|---|---|---|
 | `POST` | `/v1/chat/completions` | User | Main LLM endpoint — OpenAI-compatible |
 | `POST` | `/v1/messages` | User | Anthropic Messages API — Claude Code compatible |
+| `POST` | `/v1/messages/count_tokens` | User | Token estimation — Claude Code compatible |
 | `GET` | `/v1/models` | User | List all models across all providers |
 | `GET` | `/health` | None | Liveness probe — provider & key summary |
 | `GET` | `/metrics` | None | Per-key telemetry — requests, errors, tokens, latency |

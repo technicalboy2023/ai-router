@@ -127,21 +127,44 @@ function convertAnthropicMessage(msg) {
 
   // Array of content blocks
   if (Array.isArray(content)) {
+    // Filter out thinking/redacted_thinking blocks — OpenAI providers don't understand them.
+    // Claude Code sends these back in multi-turn conversations and they MUST not crash the translator.
+    const filteredContent = content.filter(b =>
+      b.type !== 'thinking' && b.type !== 'redacted_thinking' && b.type !== 'signature'
+    );
+
+    // If all blocks were thinking blocks, return a minimal message
+    if (filteredContent.length === 0) {
+      return { role, content: '' };
+    }
+
     // Check if it contains tool_use or tool_result blocks
-    const hasToolUse = content.some(b => b.type === 'tool_use');
-    const hasToolResult = content.some(b => b.type === 'tool_result');
+    const hasToolUse = filteredContent.some(b => b.type === 'tool_use');
+    const hasToolResult = filteredContent.some(b => b.type === 'tool_result');
 
     if (hasToolResult) {
       // Convert tool_result blocks to OpenAI tool role messages
       const messages = [];
-      for (const block of content) {
+      for (const block of filteredContent) {
         if (block.type === 'tool_result') {
+          // tool_result content can be string, array of blocks, or absent
+          let resultContent = '';
+          if (typeof block.content === 'string') {
+            resultContent = block.content;
+          } else if (Array.isArray(block.content)) {
+            resultContent = block.content
+              .filter(b => b.type === 'text')
+              .map(b => b.text)
+              .join('\n');
+          }
+          // Include is_error flag in content if present
+          if (block.is_error) {
+            resultContent = `[ERROR] ${resultContent}`;
+          }
           messages.push({
             role: 'tool',
             tool_call_id: block.tool_use_id,
-            content: typeof block.content === 'string'
-              ? block.content
-              : JSON.stringify(block.content),
+            content: resultContent,
           });
         } else if (block.type === 'text') {
           messages.push({ role, content: block.text });
@@ -152,8 +175,8 @@ function convertAnthropicMessage(msg) {
 
     if (hasToolUse && role === 'assistant') {
       // Convert assistant tool_use to OpenAI tool_calls format
-      const textParts = content.filter(b => b.type === 'text').map(b => b.text).join('');
-      const toolCalls = content
+      const textParts = filteredContent.filter(b => b.type === 'text').map(b => b.text).join('');
+      const toolCalls = filteredContent
         .filter(b => b.type === 'tool_use')
         .map(b => ({
           id: b.id,
@@ -172,17 +195,17 @@ function convertAnthropicMessage(msg) {
     }
 
     // Plain text/image content blocks → flatten to string
-    const textContent = content
+    const textContent = filteredContent
       .filter(b => b.type === 'text')
       .map(b => b.text)
       .join('');
 
     // Check for image blocks
-    const imageBlocks = content.filter(b => b.type === 'image');
+    const imageBlocks = filteredContent.filter(b => b.type === 'image');
     if (imageBlocks.length > 0) {
       // Convert to OpenAI vision format
       const parts = [];
-      for (const block of content) {
+      for (const block of filteredContent) {
         if (block.type === 'text') {
           parts.push({ type: 'text', text: block.text });
         } else if (block.type === 'image') {
@@ -300,6 +323,16 @@ export function openAIToAnthropic(openAIResponse, requestModel) {
 /**
  * Streaming state tracker for converting OpenAI SSE → Anthropic SSE.
  * Create one instance per streaming request.
+ *
+ * Handles BOTH text content AND tool calls streaming:
+ *
+ * OpenAI streaming tool calls:
+ *   delta.tool_calls: [{ index, id, type, function: { name, arguments } }]
+ *
+ * Anthropic streaming tool calls:
+ *   content_block_start: { type: "tool_use", id, name, input: {} }
+ *   content_block_delta: { type: "input_json_delta", partial_json: "..." }
+ *   content_block_stop
  */
 export class AnthropicStreamState {
   constructor(model, requestId) {
@@ -307,18 +340,24 @@ export class AnthropicStreamState {
     this.requestId = requestId;
     this.messageId = `msg_${newCompletionId()}`;
     this.started = false;
-    this.blockStarted = false;
+    this.textBlockOpen = false;
     this.outputTokens = 0;
     this.inputTokens = 0;
+
+    // Tool call tracking
+    this.currentBlockIndex = 0;       // Current Anthropic content block index
+    this.activeToolCalls = new Map();  // OpenAI tool index → { id, name, blockIndex }
+    this.hasTextContent = false;       // Whether any text was emitted
   }
 
   /**
-   * Generate the opening SSE events (message_start + content_block_start).
+   * Generate the opening SSE events (message_start only).
+   * Text block start is deferred until actual text content arrives.
    * @returns {string} SSE text
    */
-  emitStart() {
+  emitMessageStart() {
+    if (this.started) return '';
     this.started = true;
-    this.blockStarted = true;
 
     const messageStartEvent = {
       type: 'message_start',
@@ -337,6 +376,21 @@ export class AnthropicStreamState {
       },
     };
 
+    return (
+      `event: message_start\ndata: ${JSON.stringify(messageStartEvent)}\n\n` +
+      `event: ping\ndata: {"type": "ping"}\n\n`
+    );
+  }
+
+  /**
+   * Open a text content block (index 0).
+   * @returns {string} SSE text
+   */
+  openTextBlock() {
+    if (this.textBlockOpen) return '';
+    this.textBlockOpen = true;
+    this.currentBlockIndex = 0;
+
     const contentBlockStart = {
       type: 'content_block_start',
       index: 0,
@@ -346,15 +400,29 @@ export class AnthropicStreamState {
       },
     };
 
-    return (
-      `event: message_start\ndata: ${JSON.stringify(messageStartEvent)}\n\n` +
-      `event: ping\ndata: {"type": "ping"}\n\n` +
-      `event: content_block_start\ndata: ${JSON.stringify(contentBlockStart)}\n\n`
-    );
+    return `event: content_block_start\ndata: ${JSON.stringify(contentBlockStart)}\n\n`;
   }
 
   /**
-   * Convert a single OpenAI SSE chunk to Anthropic content_block_delta event.
+   * Close the text content block if it was opened.
+   * @returns {string} SSE text
+   */
+  closeTextBlock() {
+    if (!this.textBlockOpen) return '';
+    this.textBlockOpen = false;
+
+    const contentBlockStop = {
+      type: 'content_block_stop',
+      index: 0,
+    };
+
+    return `event: content_block_stop\ndata: ${JSON.stringify(contentBlockStop)}\n\n`;
+  }
+
+  /**
+   * Convert a single OpenAI SSE chunk to Anthropic SSE events.
+   * Handles text deltas, tool calls, and finish reasons.
+   *
    * @param {string} sseText - Raw OpenAI SSE line (e.g. "data: {...}\n\n")
    * @returns {string} Anthropic SSE event text, or empty string if not applicable
    */
@@ -399,17 +467,25 @@ export class AnthropicStreamState {
     if (!delta) return '';
 
     const content = delta.content;
+    const toolCalls = delta.tool_calls;
     const finishReason = parsed?.choices?.[0]?.finish_reason;
 
     let output = '';
 
-    // Emit start events if not done yet
+    // Emit message_start if not done yet
     if (!this.started) {
-      output += this.emitStart();
+      output += this.emitMessageStart();
     }
 
-    // Text delta
+    // ── Handle text content ──────────────────────────────────────────────
     if (content) {
+      // Open text block if not yet open
+      if (!this.textBlockOpen) {
+        output += this.openTextBlock();
+      }
+
+      this.hasTextContent = true;
+
       const deltaEvent = {
         type: 'content_block_delta',
         index: 0,
@@ -422,6 +498,63 @@ export class AnthropicStreamState {
       this.outputTokens++;
     }
 
+    // ── Handle tool calls ────────────────────────────────────────────────
+    if (toolCalls && Array.isArray(toolCalls)) {
+      for (const tc of toolCalls) {
+        const toolIndex = tc.index ?? 0;
+
+        // New tool call (has id and function.name) → open a new content block
+        if (tc.id && tc.function?.name) {
+          // Close text block first if it's open
+          if (this.textBlockOpen) {
+            output += this.closeTextBlock();
+          }
+
+          // Close previous tool block if any at this index
+          // (shouldn't happen normally, but safety)
+
+          // Assign new block index
+          this.currentBlockIndex++;
+          const blockIndex = this.currentBlockIndex;
+
+          this.activeToolCalls.set(toolIndex, {
+            id: tc.id,
+            name: tc.function.name,
+            blockIndex,
+          });
+
+          const contentBlockStart = {
+            type: 'content_block_start',
+            index: blockIndex,
+            content_block: {
+              type: 'tool_use',
+              id: tc.id,
+              name: tc.function.name,
+              input: {},
+            },
+          };
+          output += `event: content_block_start\ndata: ${JSON.stringify(contentBlockStart)}\n\n`;
+        }
+
+        // Tool call argument chunks → input_json_delta
+        if (tc.function?.arguments) {
+          const tracked = this.activeToolCalls.get(toolIndex);
+          if (tracked) {
+            const deltaEvent = {
+              type: 'content_block_delta',
+              index: tracked.blockIndex,
+              delta: {
+                type: 'input_json_delta',
+                partial_json: tc.function.arguments,
+              },
+            };
+            output += `event: content_block_delta\ndata: ${JSON.stringify(deltaEvent)}\n\n`;
+            this.outputTokens++;
+          }
+        }
+      }
+    }
+
     // Finish reason present → emit closing events
     if (finishReason && finishReason !== 'null') {
       output += this.emitEnd(finishReason);
@@ -431,7 +564,8 @@ export class AnthropicStreamState {
   }
 
   /**
-   * Generate the closing SSE events (content_block_stop + message_delta + message_stop).
+   * Generate the closing SSE events.
+   * Closes all open blocks + message_delta + message_stop.
    * @param {string} [finishReason='stop']
    * @returns {string} SSE text
    */
@@ -439,12 +573,24 @@ export class AnthropicStreamState {
     if (!this.started) return '';
 
     const stopReason = OPENAI_TO_ANTHROPIC_STOP[finishReason] || 'end_turn';
+    let output = '';
 
-    const contentBlockStop = {
-      type: 'content_block_stop',
-      index: 0,
-    };
+    // Close text block if still open
+    if (this.textBlockOpen) {
+      output += this.closeTextBlock();
+    }
 
+    // Close all open tool call blocks
+    for (const [, tracked] of this.activeToolCalls) {
+      const contentBlockStop = {
+        type: 'content_block_stop',
+        index: tracked.blockIndex,
+      };
+      output += `event: content_block_stop\ndata: ${JSON.stringify(contentBlockStop)}\n\n`;
+    }
+    this.activeToolCalls.clear();
+
+    // message_delta with stop reason
     const messageDelta = {
       type: 'message_delta',
       delta: {
@@ -455,19 +601,18 @@ export class AnthropicStreamState {
         output_tokens: this.outputTokens,
       },
     };
+    output += `event: message_delta\ndata: ${JSON.stringify(messageDelta)}\n\n`;
 
+    // message_stop
     const messageStop = {
       type: 'message_stop',
     };
+    output += `event: message_stop\ndata: ${JSON.stringify(messageStop)}\n\n`;
 
     // Prevent double-end
     this.started = false;
 
-    return (
-      `event: content_block_stop\ndata: ${JSON.stringify(contentBlockStop)}\n\n` +
-      `event: message_delta\ndata: ${JSON.stringify(messageDelta)}\n\n` +
-      `event: message_stop\ndata: ${JSON.stringify(messageStop)}\n\n`
-    );
+    return output;
   }
 }
 

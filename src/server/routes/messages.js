@@ -70,12 +70,20 @@ router.post('/', async (req, res, next) => {
     // Cache bypass when temperature or seed parameters are provided
     const useCache = config.cache?.enabled && extraParams.temperature === undefined && extraParams.seed === undefined;
 
+    // Extract Anthropic-specific headers for logging
+    const anthropicVersion = req.headers['anthropic-version'] || null;
+    const anthropicBeta = req.headers['anthropic-beta'] || null;
+    const sessionId = req.headers['x-claude-code-session-id'] || null;
+
     logger.info({
       requestId,
       model,
       stream,
       msg_count: messages.length,
       endpoint: '/v1/messages',
+      ...(sessionId && { sessionId }),
+      ...(anthropicVersion && { anthropicVersion }),
+      ...(anthropicBeta && { anthropicBeta }),
     }, 'Incoming Anthropic messages request');
 
     // Attach AbortController for client disconnects
@@ -111,8 +119,8 @@ router.post('/', async (req, res, next) => {
       try {
         const streamGenerator = await executePromise;
 
-        // Emit initial events (message_start + content_block_start)
-        res.write(streamState.emitStart());
+        // Emit message_start event (text block opens lazily on first content)
+        res.write(streamState.emitMessageStart());
 
         for await (const chunk of streamGenerator) {
           // Convert each OpenAI SSE chunk → Anthropic SSE events
