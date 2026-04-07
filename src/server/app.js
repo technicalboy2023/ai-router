@@ -19,6 +19,7 @@ import usageRouter from './routes/usage.js';
 import metricsRouter from './routes/metrics.js';
 import routerStatusRouter from './routes/routerStatus.js';
 import adminRouter from './routes/admin.js';
+import messagesRouter from './routes/messages.js';
 
 /**
  * Create an Express application configured with router components.
@@ -70,6 +71,7 @@ export function createApp(config, deps) {
 
   // ── API Endpoints ─────────────────────────────────────────────────────────
   app.use('/v1/chat/completions', chatCompletionsRouter);
+  app.use('/v1/messages', messagesRouter);
   app.use('/v1/models', modelsRouter);
   app.use('/health', healthRouter);
   app.use('/usage', usageRouter);

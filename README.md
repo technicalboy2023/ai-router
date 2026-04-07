@@ -8,13 +8,14 @@
 [![Node.js](https://img.shields.io/badge/Node.js-LTS%20%28v20%2B%29-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-a855f7?style=for-the-badge)](LICENSE)
 [![OpenAI Compatible](https://img.shields.io/badge/OpenAI-Compatible-412991?style=for-the-badge&logo=openai&logoColor=white)](https://platform.openai.com/docs/api-reference)
+[![Anthropic Compatible](https://img.shields.io/badge/Anthropic-Compatible-d97706?style=for-the-badge&logo=anthropic&logoColor=white)](https://docs.anthropic.com/en/api/messages)
 [![ESM](https://img.shields.io/badge/ESM-Native%20Modules-f59e0b?style=for-the-badge&logo=javascript&logoColor=white)](https://nodejs.org/api/esm.html)
 [![GitHub Stars](https://img.shields.io/github/stars/technicalboy2023/ai-router?style=for-the-badge&color=f59e0b&logo=github)](https://github.com/technicalboy2023/ai-router/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/technicalboy2023/ai-router?style=for-the-badge&color=6366f1&logo=github)](https://github.com/technicalboy2023/ai-router/network/members)
 
 <br/>
 
-> **Production-grade, open-source AI gateway — unifying Groq, Gemini, OpenRouter, and Ollama behind a single OpenAI-compatible endpoint. Smart failover, multi-key rotation, response caching, 4 routing strategies, and a powerful CLI — all in one.**
+> **Production-grade, open-source AI gateway — unifying Groq, Gemini, OpenRouter, and Ollama behind a single OpenAI-compatible + Anthropic-compatible endpoint. Smart failover, multi-key rotation, response caching, 4 routing strategies, and a powerful CLI — all in one.**
 
 <br/>
 
@@ -43,6 +44,7 @@ Building production AI apps is painful:
 | Feature | Description |
 |---|---|
 | 🔁 **OpenAI-Compatible API** | Drop-in replacement at `/v1/chat/completions` — zero SDK changes |
+| 🤖 **Anthropic-Compatible API** | Full `/v1/messages` endpoint — works with Claude Code, Anthropic SDKs |
 | ⚡ **Smart Failover** | Automatic provider switching on failure with exponential backoff |
 | 🔑 **Multi-Key Rotation** | Add unlimited keys per provider — health-scored rotation bypasses rate limits |
 | 🧠 **Response Caching** | In-memory TTL cache — same prompt costs zero tokens the second time |
@@ -343,6 +345,7 @@ ai-router start myrouter -c config/myrouter.json
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
 | `POST` | `/v1/chat/completions` | User | Main LLM endpoint — OpenAI-compatible |
+| `POST` | `/v1/messages` | User | Anthropic Messages API — Claude Code compatible |
 | `GET` | `/v1/models` | User | List all models across all providers |
 | `GET` | `/health` | None | Liveness probe — provider & key summary |
 | `GET` | `/metrics` | None | Per-key telemetry — requests, errors, tokens, latency |
@@ -397,6 +400,58 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 
 ```bash
 curl http://localhost:8000/health
+```
+
+### 🤖 Claude Code Setup
+
+The router fully supports Claude Code via the `/v1/messages` endpoint. Configure it:
+
+```bash
+# Set your router as the Anthropic API base URL
+export ANTHROPIC_BASE_URL="http://YOUR_VPS_IP:8000"
+export ANTHROPIC_API_KEY="your-router-auth-token"
+```
+
+Or add to your shell config (`~/.bashrc`, `~/.zshrc`) for persistence:
+
+```bash
+echo 'export ANTHROPIC_BASE_URL="http://YOUR_VPS_IP:8000"' >> ~/.bashrc
+echo 'export ANTHROPIC_API_KEY="your-router-auth-token"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+Now launch Claude Code normally — it will route through your AI Router with full fallback support.
+
+### 🤖 Anthropic SDK (Python)
+
+```python
+import anthropic
+
+client = anthropic.Anthropic(
+    base_url="http://localhost:8000",
+    api_key="my_super_secret_token"
+)
+
+message = client.messages.create(
+    model="openrouter/auto",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Explain quantum computing simply."}]
+)
+print(message.content[0].text)
+```
+
+### 🤖 Anthropic cURL (/v1/messages)
+
+```bash
+curl -X POST http://localhost:8000/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: my_super_secret_token" \
+  -H "anthropic-version: 2023-06-01" \
+  -d '{
+    "model": "openrouter/auto",
+    "max_tokens": 1024,
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
 ```
 
 ### 🔗 n8n / Make / Zapier
@@ -495,13 +550,14 @@ ai-router/
 │   │   ├── app.js                # Express app bootstrap
 │   │   ├── middleware/           # auth, cors, rateLimiter,
 │   │   │                         # errorHandler, requestId
-│   │   └── routes/               # chatCompletions, models, health,
-│   │                             # metrics, usage, routerStatus, admin
+│   │   └── routes/               # chatCompletions, messages, models,
+│   │                             # health, metrics, usage, routerStatus, admin
 │   └── services/
 │       ├── RoutingEngine.js      # 4-strategy routing logic
 │       ├── FallbackEngine.js     # Retry + failover
 │       ├── KeyManager.js         # Key selection & rotation
 │       ├── ToolCallHandler.js    # OpenAI tool/function calls
+│       ├── AnthropicTranslator.js # Anthropic ↔ OpenAI format conversion
 │       ├── ResponseNormalizer.js # Unified response format
 │       └── ErrorNormalizer.js    # Unified error format
 │

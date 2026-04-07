@@ -19,18 +19,27 @@ export function authMiddleware(opts = {}) {
     // Skip auth for health check
     if (req.path === '/health') return next();
 
+    // Support both OpenAI-style (Authorization: Bearer) and Anthropic-style (x-api-key) auth
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const xApiKey = req.headers['x-api-key'];
+
+    let token = null;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.slice(7).trim();
+    } else if (xApiKey) {
+      token = xApiKey.trim();
+    }
+
+    if (!token) {
       return res.status(401).json({
         error: {
-          message: 'Authentication required. Provide Bearer token.',
+          message: 'Authentication required. Provide Bearer token or x-api-key header.',
           type: 'auth_error',
           code: 401,
         },
       });
     }
-
-    const token = authHeader.slice(7).trim();
     if (!allTokens.has(token)) {
       return res.status(403).json({
         error: {
