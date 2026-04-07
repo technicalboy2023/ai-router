@@ -50,6 +50,10 @@ export class OpenRouterProvider extends BaseProvider {
     return `${this.baseUrl}/models`;
   }
 
+  get embeddingsEndpoint() {
+    return `${this.baseUrl}/embeddings`;
+  }
+
   get defaultModel() {
     return this.config.defaultModel || 'openrouter/auto';
   }
@@ -219,6 +223,107 @@ export class OpenRouterProvider extends BaseProvider {
     this.logger.error({ requestId, model, keys_tried: keys.length }, 'All OpenRouter keys exhausted');
     throw Object.assign(
       new Error('All OpenRouter API keys exhausted. Please try again later.'),
+      { statusCode: 503, type: 'exhausted' }
+    );
+  }
+
+  // ── Embeddings call ─────────────────────────────────────────────────────
+
+  async embed(input, model, options = {}) {
+    const {
+      extraParams = {},
+      requestId = newRequestId(),
+      signal,
+    } = options;
+
+    const payload = { input, model, ...extraParams };
+    const keys = this.registry.rankedKeys();
+
+    for (const key of keys) {
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        const t0 = performance.now();
+        try {
+          const response = await httpFetch(this.embeddingsEndpoint, {
+            method: 'POST',
+            headers: this.buildHeaders(key),
+            body: JSON.stringify(payload),
+            signal,
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            const latency = (performance.now() - t0) / 1000;
+            
+            const tokens = data.usage?.prompt_tokens || data.usage?.total_tokens || 0;
+
+            this.logger.info({
+              requestId, model, latency_s: parseFloat(latency.toFixed(3)),
+              status: 200, key_suffix: '…' + key.slice(-6),
+            }, 'Embeddings call succeeded');
+
+            this.registry.onSuccess(key, latency, this.logger, tokens);
+
+            return data;
+          }
+
+          if (COOLING_STATUSES.has(response.status)) {
+            this.logger.warn({
+              requestId, status: response.status,
+              key_suffix: '…' + key.slice(-6),
+            }, 'Key cooling');
+            this.registry.onError(key, true, this.logger);
+            break;
+          }
+
+          if (TRANSIENT_STATUSES.has(response.status)) {
+            this.logger.warn({
+              requestId, status: response.status, attempt: attempt + 1,
+              key_suffix: '…' + key.slice(-6),
+            }, 'Transient server error, retrying');
+            this.registry.onError(key, false, this.logger);
+            await backoffSleep(attempt);
+            continue;
+          }
+
+          const bodyText = await response.text().catch(() => '');
+          if (response.status === 400 || response.status === 404) {
+            const err = new Error(bodyText || `HTTP ${response.status}`);
+            err.statusCode = response.status;
+            throw err;
+          }
+
+          this.logger.error({
+            requestId, status: response.status, body: bodyText.slice(0, 500),
+            key_suffix: '…' + key.slice(-6),
+          }, 'Unexpected HTTP status');
+          this.registry.onError(key, false, this.logger);
+          await backoffSleep(attempt);
+
+        } catch (err) {
+          if (err.statusCode === 400 || err.statusCode === 404) throw err;
+          const latency = (performance.now() - t0) / 1000;
+
+          if (err.name === 'TimeoutError' || err.code === 'UND_ERR_CONNECT_TIMEOUT') {
+            this.logger.warn({
+              requestId, latency_s: parseFloat(latency.toFixed(3)),
+              attempt: attempt + 1, key_suffix: '…' + key.slice(-6),
+              error: err.message,
+            }, 'Request timeout');
+          } else {
+            this.logger.error({
+              requestId, error: err.message,
+              key_suffix: '…' + key.slice(-6),
+            }, 'HTTP request error');
+          }
+          this.registry.onError(key, false, this.logger);
+          await backoffSleep(attempt);
+        }
+      }
+    }
+
+    this.logger.error({ requestId, model, keys_tried: keys.length }, 'All OpenRouter keys exhausted for embeddings');
+    throw Object.assign(
+      new Error('All OpenRouter API keys exhausted for embeddings. Please try again later.'),
       { statusCode: 503, type: 'exhausted' }
     );
   }

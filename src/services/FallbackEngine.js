@@ -132,6 +132,74 @@ export class FallbackEngine {
       { statusCode: lastError ? lastError.error.code : 503, type: ErrorTypes.EXHAUSTED }
     );
   }
+
+  /**
+   * Execute an embedding request with cross-provider fallback handling.
+   * @param {string|string[]} input
+   * @param {string} requestedModel
+   * @param {object} options
+   * @returns {Promise<object>}
+   */
+  async executeEmbed(input, requestedModel, options = {}) {
+    const { requestId = newRequestId(), extraParams = {}, useCache = true, signal } = options;
+
+    // Build list of provider+model targets
+    const targets = this.routingEngine.getProviderChain(requestedModel);
+
+    // If no targets, fallback to priority providers
+    if (targets.length === 0) {
+      throw Object.assign(
+        new Error('No available providers found for routing.'),
+        { statusCode: 503, type: ErrorTypes.PROVIDER_ERROR }
+      );
+    }
+
+    let lastError = null;
+    let fallbackValidationError = null;
+
+    for (let i = 0; i < targets.length; i++) {
+      const { provider, model } = targets[i];
+      this.logger.info({ requestId, target_provider: provider.id, target_model: model, attempt: i + 1 }, 'FallbackEngine: trying embed target');
+
+      try {
+        const finalResponse = await provider.embed(input, model, { extraParams, requestId, useCache, signal });
+        
+        // Decorate with target info
+        finalResponse.model = requestedModel; // Keep original model name for the client
+
+        return finalResponse;
+
+      } catch (err) {
+        lastError = normalizeError(err, { requestId, provider: provider.id, model });
+        
+        if (lastError.error.type === ErrorTypes.VALIDATION_ERROR) {
+          fallbackValidationError = lastError;
+        }
+
+        this.logger.warn({
+          requestId,
+          failed_provider: provider.id,
+          failed_model: model,
+          error: lastError.error.message,
+          error_type: lastError.error.type
+        }, 'FallbackEngine: embed target failed, checking for fallback');
+      }
+    }
+
+    this.logger.error({ requestId, requestedModel, targets_tried: targets.length }, 'FallbackEngine: all embed fallbacks exhausted');
+    
+    if (fallbackValidationError) {
+      throw Object.assign(
+        new Error(fallbackValidationError.error.message),
+        { statusCode: fallbackValidationError.error.code, type: ErrorTypes.VALIDATION_ERROR }
+      );
+    }
+
+    throw Object.assign(
+      new Error(lastError ? lastError.error.message : 'All embed fallback targets exhausted.'),
+      { statusCode: lastError ? lastError.error.code : 503, type: ErrorTypes.EXHAUSTED }
+    );
+  }
 }
 
 export default FallbackEngine;

@@ -21,7 +21,7 @@ import routerStatusRouter from './routes/routerStatus.js';
 import adminRouter from './routes/admin.js';
 import messagesRouter from './routes/messages.js';
 import countTokensRouter from './routes/countTokens.js';
-
+import embeddingsRouter from './routes/embeddings.js';
 /**
  * Create an Express application configured with router components.
  * @param {object} config - Router config
@@ -74,6 +74,7 @@ export function createApp(config, deps) {
   app.use('/v1/chat/completions', chatCompletionsRouter);
   app.use('/v1/messages/count_tokens', countTokensRouter);  // Must be BEFORE /v1/messages
   app.use('/v1/messages', messagesRouter);
+  app.use('/v1/embeddings', embeddingsRouter);
   app.use('/v1/models', modelsRouter);
   app.use('/health', healthRouter);
   app.use('/usage', usageRouter);

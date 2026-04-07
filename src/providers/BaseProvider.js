@@ -58,6 +58,17 @@ export class BaseProvider {
   }
 
   /**
+   * Execute an embedding request.
+   * @param {string|string[]} input - The text to embed
+   * @param {string} model - Model identifier
+   * @param {object} [options] - { extraParams, requestId, useCache }
+   * @returns {Promise<object>} OpenAI-compatible embeddings response
+   */
+  async embed(input, model, options = {}) {
+    throw new Error(`${this.id}: embed() not implemented. Provider may not support embeddings.`);
+  }
+
+  /**
    * List available models from this provider.
    * @returns {Promise<object[]>} Array of model objects in OpenAI format
    */
