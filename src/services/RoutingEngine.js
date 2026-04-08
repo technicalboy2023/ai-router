@@ -4,7 +4,8 @@
  * Smart routing decision engine.
  * Determines which provider + model to use for a given request.
  *
- * Strategies:
+ * PRIMARY: ModelRegistry lookup — each model routes to the provider that owns it.
+ * FALLBACK strategies (if ModelRegistry miss):
  *  - priority: try providers in configured order
  *  - model-based: map model names/patterns to providers
  *  - latency-aware: prefer provider with lowest average latency
@@ -15,15 +16,25 @@ export class RoutingEngine {
   /**
    * @param {object} config - routing config section
    * @param {import('../providers/ProviderRegistry.js').ProviderRegistry} providerRegistry
+   * @param {import('./ModelRegistry.js').ModelRegistry} [modelRegistry] - Optional model registry for smart routing
    */
-  constructor(config, providerRegistry) {
+  constructor(config, providerRegistry, modelRegistry = null) {
     this.config = config;
     this.providerRegistry = providerRegistry;
+    this.modelRegistry = modelRegistry;
     this.strategy = config.strategy || 'priority';
     this.providerOrder = config.providerOrder || [];
     this.modelMapping = config.modelMapping || {};
     this.categoryMapping = config.categoryMapping || {};
     this._roundRobinIndex = 0;
+  }
+
+  /**
+   * Set the ModelRegistry (for deferred initialization).
+   * @param {import('./ModelRegistry.js').ModelRegistry} modelRegistry
+   */
+  setModelRegistry(modelRegistry) {
+    this.modelRegistry = modelRegistry;
   }
 
   /**
@@ -33,7 +44,19 @@ export class RoutingEngine {
    * @returns {{ provider: import('../providers/BaseProvider.js').BaseProvider, model: string }|null}
    */
   route(requestedModel, opts = {}) {
-    // Top-Level Explicit Routing: Auto-detect explicit provider prefix (e.g., 'openrouter/auto' -> 'openrouter')
+    // ── 1. ModelRegistry lookup (HIGHEST PRIORITY) ──────────────────────
+    // If ModelRegistry knows which provider owns this model, use it directly.
+    if (this.modelRegistry && this.modelRegistry.initialized) {
+      const resolvedProviderId = this.modelRegistry.resolve(requestedModel);
+      if (resolvedProviderId) {
+        const provider = this.providerRegistry.get(resolvedProviderId);
+        if (provider && provider.isAvailable()) {
+          return { provider, model: requestedModel };
+        }
+      }
+    }
+
+    // ── 2. Explicit Provider Prefix (e.g., 'openrouter/auto') ──────────
     if (requestedModel && requestedModel.includes('/')) {
       const prefix = requestedModel.split('/')[0].toLowerCase();
       const provider = this.providerRegistry.get(prefix);
@@ -44,6 +67,7 @@ export class RoutingEngine {
       }
     }
 
+    // ── 3. Config-based strategy fallback ────────────────────────────────
     switch (this.strategy) {
       case 'model-based':
         return this._routeByModel(requestedModel, opts);
@@ -59,24 +83,68 @@ export class RoutingEngine {
 
   /**
    * Get ordered list of providers to try (for fallback engine).
+   * With ModelRegistry: only include providers that actually have the model.
+   * Without: old behavior (all providers in priority order).
+   *
    * @param {string} requestedModel
    * @returns {Array<{ provider: object, model: string }>}
    */
   getProviderChain(requestedModel) {
     const chain = [];
-    
-    // 1. Determine the optimal starting provider using current strategy (e.g. model-based)
+
+    // ── Smart chain: only providers that have this model ─────────────────
+    if (this.modelRegistry && this.modelRegistry.initialized) {
+      const owningProviderIds = this.modelRegistry.resolveAll(requestedModel);
+
+      if (owningProviderIds.length > 0) {
+        for (const pid of owningProviderIds) {
+          const provider = this.providerRegistry.get(pid);
+          if (provider && provider.isAvailable()) {
+            chain.push({ provider, model: requestedModel });
+          }
+        }
+
+        // If we found at least one provider via ModelRegistry, return ONLY those.
+        // No blind fallback to unrelated providers.
+        if (chain.length > 0) {
+          return chain;
+        }
+      }
+    }
+
+    // ── Prefix-based routing (e.g. openrouter/auto) ─────────────────────
+    if (requestedModel && requestedModel.includes('/')) {
+      const prefix = requestedModel.split('/')[0].toLowerCase();
+      const provider = this.providerRegistry.get(prefix);
+      if (provider && provider.isAvailable()) {
+        return [{ provider, model: requestedModel }];
+      }
+    }
+
+    // ── Legacy fallback: all providers in priority order ──────────────────
+    // Only used when ModelRegistry hasn't initialized or model not found anywhere
     const initialRoute = this.route(requestedModel);
     if (initialRoute && initialRoute.provider) {
       chain.push(initialRoute);
     }
 
-    // 2. Append the rest of the available providers based on configured priority order
-    const priorityProviders = this.providerRegistry.getInOrder(this.providerOrder);
-    for (const provider of priorityProviders) {
-      if (initialRoute && provider.id === initialRoute.provider.id) continue; // Skip if already added
-      const model = this._resolveModel(requestedModel, provider);
-      chain.push({ provider, model });
+    const catchAllId = this.config.modelRegistry?.catchAllProvider || 'openrouter';
+    const catchAllProvider = this.providerRegistry.get(catchAllId);
+    
+    // If we have a catch-all provider configured, try that (instead of hitting all providers)
+    if (catchAllProvider && catchAllProvider.isAvailable() && (!initialRoute || initialRoute.provider.id !== catchAllId)) {
+      const model = this._resolveModel(requestedModel, catchAllProvider);
+      chain.push({ provider: catchAllProvider, model });
+    }
+
+    // Only fallback to absolutely everything if the chain is somehow still empty
+    if (chain.length === 0) {
+      const priorityProviders = this.providerRegistry.getInOrder(this.providerOrder);
+      for (const provider of priorityProviders) {
+        if (initialRoute && provider.id === initialRoute.provider.id) continue;
+        const model = this._resolveModel(requestedModel, provider);
+        chain.push({ provider, model });
+      }
     }
 
     return chain;
@@ -102,7 +170,7 @@ export class RoutingEngine {
   }
 
   _routeByModel(requestedModel, opts = {}) {
-    // Check exact model mapping
+    // Check exact model mapping from config
     for (const [pattern, providerId] of Object.entries(this.modelMapping)) {
       if (this._matchPattern(requestedModel, pattern)) {
         const provider = this.providerRegistry.get(providerId);
@@ -122,7 +190,6 @@ export class RoutingEngine {
 
     if (providers.length === 0) return null;
 
-    // Sort by average latency (via key registry health)
     providers.sort((a, b) => {
       const aLatency = a.registry ? this._avgProviderLatency(a.registry) : 9999;
       const bLatency = b.registry ? this._avgProviderLatency(b.registry) : 9999;
@@ -146,19 +213,16 @@ export class RoutingEngine {
   // ── Helpers ─────────────────────────────────────────────────────────────
 
   _resolveModel(requestedModel, provider) {
-    // If provider has a model mapping for categories, check it
     if (provider.config.models && typeof provider.config.models === 'object') {
       for (const [category, model] of Object.entries(provider.config.models)) {
         if (requestedModel === category) return model;
       }
     }
 
-    // If model looks like it belongs to this provider, use as-is
     return requestedModel || provider.defaultModel;
   }
 
   _matchPattern(model, pattern) {
-    // Support simple glob: gpt-* matches gpt-4o, gpt-3.5-turbo, etc.
     if (pattern.includes('*')) {
       const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
       return regex.test(model);

@@ -61,6 +61,11 @@
       "max": 16000
     }
   },
+  "modelRegistry": {
+    "enabled": true,
+    "refreshIntervalMs": 1800000,
+    "catchAllProvider": "openrouter"
+  },
   "cache": {
     "enabled": true,
     "ttl": 30,

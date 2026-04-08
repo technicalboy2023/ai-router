@@ -71,6 +71,14 @@ const FallbackConfigSchema = z.object({
   }).default({}),
 }).default({});
 
+// ── Model Registry Config ─────────────────────────────────────────────────
+
+const ModelRegistryConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  refreshIntervalMs: z.number().int().min(0).default(1800000), // 30 min
+  catchAllProvider: z.string().default('openrouter'),
+}).default({});
+
 // ── Cache Config ──────────────────────────────────────────────────────────────
 
 const CacheConfigSchema = z.object({
@@ -129,6 +137,7 @@ export const RouterConfigSchema = z.object({
 
   routing: RoutingConfigSchema,
   fallback: FallbackConfigSchema,
+  modelRegistry: ModelRegistryConfigSchema,
   cache: CacheConfigSchema,
   performance: PerformanceConfigSchema,
   logging: LoggingConfigSchema,

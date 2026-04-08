@@ -14,6 +14,7 @@ import { initHttpClient, closeHttpClient } from './utils/httpClient.js';
 import { loadConfig } from './config/loader.js';
 import { ProviderRegistry } from './providers/ProviderRegistry.js';
 import { RoutingEngine } from './services/RoutingEngine.js';
+import { ModelRegistry } from './services/ModelRegistry.js';
 import { FallbackEngine } from './services/FallbackEngine.js';
 import { ResponseCache } from './router_core/ResponseCache.js';
 import { UsageStore } from './router_core/UsageStore.js';
@@ -70,8 +71,17 @@ async function start() {
   const providerRegistry = new ProviderRegistry().initFromConfig(config, { logger, cache, store });
   providerRegistry.restoreFromStore(store);
 
-  // Init Routing Engine
-  const routingEngine = new RoutingEngine(config.routing || {}, providerRegistry);
+  // Init Model Registry — fetches model lists from all providers for smart routing
+  const modelRegistry = new ModelRegistry(providerRegistry, config.modelRegistry || {}, logger);
+  try {
+    await modelRegistry.initialize();
+    logger.info({ stats: modelRegistry.stats(), total: modelRegistry.size }, 'ModelRegistry ready');
+  } catch (err) {
+    logger.warn({ error: err.message }, 'ModelRegistry initialization failed, falling back to legacy routing');
+  }
+
+  // Init Routing Engine (with ModelRegistry for smart model→provider routing)
+  const routingEngine = new RoutingEngine(config.routing || {}, providerRegistry, modelRegistry);
 
   // Init Fallback Engine
   const fallbackEngine = new FallbackEngine(config.fallback || {}, providerRegistry, routingEngine, logger);
@@ -128,6 +138,7 @@ async function start() {
     logger.info(`Received ${signal}. Starting graceful shutdown...`);
     
     tasks.forEach(clearInterval);
+    modelRegistry.destroy();
 
     server.close(async () => {
       logger.info('HTTP server closed.');
