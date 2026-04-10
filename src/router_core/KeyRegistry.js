@@ -60,7 +60,7 @@ export class KeyRegistry {
   // ── Selection ───────────────────────────────────────────────────────────
 
   /**
-   * Get available keys ordered by health_score descending.
+   * Get available keys ordered by round-robin.
    * If no keys are available (all cooled down), returns all keys as last resort.
    * @returns {string[]}
    */
@@ -77,9 +77,22 @@ export class KeyRegistry {
       available = Array.from(this._registry.values());
     }
 
-    // Sort by health score descending
-    available.sort((a, b) => b.healthScore - a.healthScore);
-    return available.map(kh => kh.key);
+    // Determine the current round-robin index
+    if (this._rrIndex === undefined) {
+      this._rrIndex = 0;
+    }
+
+    const count = available.length;
+    // Ensure index is within bounds if available keys shrank
+    this._rrIndex = this._rrIndex % count;
+
+    // Rotate the array so the next round-robin key is first
+    const rotated = available.slice(this._rrIndex).concat(available.slice(0, this._rrIndex));
+
+    // Advance the index for the next request
+    this._rrIndex = (this._rrIndex + 1) % this._registry.size;
+
+    return rotated.map(kh => kh.key);
   }
 
   // ── Telemetry Updates ───────────────────────────────────────────────────
