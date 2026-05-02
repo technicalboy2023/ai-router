@@ -2,7 +2,7 @@
  * OllamaProvider.js
  * =================
  * Production-grade Ollama provider (OpenAI-compatible).
- * Full port of OpenRouterProvider setup for Ollama Cloud (https://ollama.com/v1).
+ * Full port of OpenRouterProvider setup for Ollama Cloud (https://api.ollama.com/v1).
  */
 
 import { BaseProvider } from './BaseProvider.js';
@@ -11,14 +11,33 @@ import { backoffSleep } from '../utils/backoff.js';
 import { estimateTokens } from '../utils/tokenEstimator.js';
 import { newCompletionId, newRequestId } from '../utils/idGenerator.js';
 
-/** HTTP status codes that freeze the key */
-const COOLING_STATUSES = new Set([429, 401, 402, 403]);
+/** HTTP status codes that freeze the key (true rate-limit / auth issues) */
+const COOLING_STATUSES = new Set([429, 401, 402]);
 
 /** HTTP status codes worth retrying with the same key */
 const TRANSIENT_STATUSES = new Set([500, 502, 503, 504]);
 
 /** Maximum retries per key */
 const MAX_RETRIES = 2;
+
+/**
+ * Check if an HTTP error body indicates the model is not found / not available.
+ * If so, there's no point trying more keys — the model itself is the problem.
+ * @param {string} bodyText - Response body text
+ * @returns {boolean}
+ */
+function isModelNotFoundError(bodyText) {
+  if (!bodyText) return false;
+  const lower = bodyText.toLowerCase();
+  return lower.includes('model') && (
+    lower.includes('not found') ||
+    lower.includes('not available') ||
+    lower.includes('does not exist') ||
+    lower.includes('not exist') ||
+    lower.includes('unknown model') ||
+    lower.includes('invalid model')
+  );
+}
 
 export class OllamaProvider extends BaseProvider {
   constructor(config, deps = {}) {
@@ -27,7 +46,7 @@ export class OllamaProvider extends BaseProvider {
   }
 
   get baseUrl() {
-    return this.config.baseUrl || 'https://ollama.com/v1';
+    return this.config.baseUrl || 'https://api.ollama.com/v1';
   }
 
   get chatEndpoint() {
@@ -141,7 +160,30 @@ export class OllamaProvider extends BaseProvider {
             return { content: text, tokens, rawResponse: data, fromCache: false };
           }
 
-          // ── Rate-limited / forbidden → cool key, next ───────────
+          // ── 403 Forbidden — could be model-not-found OR key issue ──
+          if (response.status === 403) {
+            const bodyText = await response.text().catch(() => '');
+            // If the error is about the MODEL (not the key), stop immediately
+            // — trying more keys won't help, the model itself is unavailable
+            if (isModelNotFoundError(bodyText)) {
+              this.logger.warn({
+                requestId, model, status: 403,
+                key_suffix: '…' + key.slice(-6),
+              }, 'Model not available on Ollama (403) — skipping remaining keys');
+              const err = new Error(bodyText || `Model "${model}" not available on Ollama`);
+              err.statusCode = 404;
+              throw err;
+            }
+            // Otherwise treat as a genuine key auth issue
+            this.logger.warn({
+              requestId, status: response.status,
+              key_suffix: '…' + key.slice(-6),
+            }, 'Key cooling (403 auth)');
+            this.registry.onError(key, true, this.logger);
+            break; // next key
+          }
+
+          // ── Rate-limited / auth error → cool key, next ───────────
           if (COOLING_STATUSES.has(response.status)) {
             this.logger.warn({
               requestId, status: response.status,
@@ -232,6 +274,19 @@ export class OllamaProvider extends BaseProvider {
             body: JSON.stringify(payload),
             signal,
           });
+
+          // ── 403 Forbidden — check model-not-found before key cycling ──
+          if (response.status === 403) {
+            const bodyText = await response.text().catch(() => '');
+            if (isModelNotFoundError(bodyText)) {
+              this.logger.warn({ requestId, model, status: 403 }, 'Model not available on Ollama (stream) — skipping remaining keys');
+              const err = new Error(bodyText || `Model "${model}" not available on Ollama`);
+              err.statusCode = 404;
+              throw err;
+            }
+            this.registry.onError(key, true, this.logger);
+            break; // next key (auth issue)
+          }
 
           if (COOLING_STATUSES.has(response.status)) {
             this.registry.onError(key, true, this.logger);

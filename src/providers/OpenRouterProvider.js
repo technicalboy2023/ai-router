@@ -10,7 +10,8 @@
  *  • Weighted key selection (health-score based)
  *  • Multi-layer retry: same-key → next key → exhaustion
  *  • Exponential back-off between same-key retries
- *  • Auto-cooldown for rate-limited / forbidden keys (429/402/403)
+ *  • Auto-cooldown for rate-limited keys (429/402)
+ *  • Smart 403 handling: model-not-found → fast fail, auth → cooldown
  *  • 5xx transient retry with backoff
  *  • Token extraction from API response
  *  • Synthetic error chunk on stream exhaustion
@@ -24,7 +25,7 @@ import { estimateTokens } from '../utils/tokenEstimator.js';
 import { newCompletionId, newRequestId } from '../utils/idGenerator.js';
 
 /** HTTP status codes that freeze the key */
-const COOLING_STATUSES = new Set([429, 401, 402, 403]);
+const COOLING_STATUSES = new Set([429, 401, 402]);
 
 /** HTTP status codes worth retrying with the same key */
 const TRANSIENT_STATUSES = new Set([500, 502, 503, 504]);
@@ -158,7 +159,25 @@ export class OpenRouterProvider extends BaseProvider {
             return { content: text, tokens, rawResponse: data, fromCache: false };
           }
 
-          // ── Rate-limited / forbidden → cool key, next ───────────
+          // ── 403 Forbidden — smart handling ──────────────────────
+          if (response.status === 403) {
+            const body403 = await response.text().catch(() => '');
+            const lower = body403.toLowerCase();
+            const isModelErr = lower.includes('model') && (
+              lower.includes('not found') || lower.includes('not available') ||
+              lower.includes('does not exist') || lower.includes('invalid')
+            );
+            if (isModelErr) {
+              const err = new Error(body403 || `Model "${model}" not available (HTTP 403)`);
+              err.statusCode = 404;
+              throw err;
+            }
+            this.logger.warn({ requestId, status: 403, key_suffix: '…' + key.slice(-6) }, 'Key cooling (403 auth)');
+            this.registry.onError(key, true, this.logger);
+            break;
+          }
+
+          // ── Rate-limited / auth error → cool key, next ───────────
           if (COOLING_STATUSES.has(response.status)) {
             this.logger.warn({
               requestId, status: response.status,
@@ -261,7 +280,7 @@ export class OpenRouterProvider extends BaseProvider {
               status: 200, key_suffix: '…' + key.slice(-6),
             }, 'Embeddings call succeeded');
 
-            this.registry.onSuccess(key, latency, this.logger, tokens);
+            this.registry.onSuccess(key, latency, tokens);
 
             return data;
           }
@@ -350,6 +369,23 @@ export class OpenRouterProvider extends BaseProvider {
             body: JSON.stringify(payload),
             signal,
           });
+
+          // ── 403 Forbidden — smart handling ──────────────────────
+          if (response.status === 403) {
+            const body403 = await response.text().catch(() => '');
+            const lower = body403.toLowerCase();
+            const isModelErr = lower.includes('model') && (
+              lower.includes('not found') || lower.includes('not available') ||
+              lower.includes('does not exist') || lower.includes('invalid')
+            );
+            if (isModelErr) {
+              const err = new Error(body403 || `Model "${model}" not available (HTTP 403)`);
+              err.statusCode = 404;
+              throw err;
+            }
+            this.registry.onError(key, true, this.logger);
+            break;
+          }
 
           if (COOLING_STATUSES.has(response.status)) {
             this.registry.onError(key, true, this.logger);

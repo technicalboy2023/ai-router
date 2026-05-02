@@ -12,7 +12,7 @@
     },
     "ollama": {
       "enabled": true,
-      "baseUrl": "https://ollama.com/v1",
+      "baseUrl": "https://api.ollama.com/v1",
       "keys": [],
       "envPrefix": "OLLAMA",
       "defaultModel": "llama3"

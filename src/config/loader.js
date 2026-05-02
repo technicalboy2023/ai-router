@@ -16,8 +16,28 @@ import { validateConfig } from './schema.js';
 loadDotenv();
 
 /**
+ * Check if a key looks like a placeholder / template value.
+ * @param {string} key
+ * @returns {boolean} true if the key appears to be a placeholder
+ */
+function isPlaceholderKey(key) {
+  if (!key || key.length < 10) return true; // real API keys are always 10+ chars
+  const lower = key.toLowerCase();
+  return lower.includes('...') ||
+    lower.includes('xxxxxxxxx') ||
+    lower.includes('placeholder') ||
+    lower.includes('your_') ||
+    lower.includes('bearer_token') ||
+    lower.includes('example') ||
+    lower.includes('insert_') ||
+    lower.includes('put_your') ||
+    /^[a-z_]+_\d+$/.test(lower); // catches patterns like "ollama_bearer_token_10"
+}
+
+/**
  * Load keys from environment variables for a provider.
  * Supports both numbered keys (PREFIX_KEY_1..20) and comma-separated (PREFIX_KEYS).
+ * Filters out placeholder/template values automatically.
  * @param {string} prefix - Environment variable prefix (e.g. 'OPENROUTER', 'GEMINI')
  * @returns {string[]}
  */
@@ -27,7 +47,7 @@ export function loadKeysFromEnv(prefix) {
   // Numbered keys: PREFIX_KEY_1 through PREFIX_KEY_20
   for (let i = 1; i <= 20; i++) {
     const val = process.env[`${prefix}_KEY_${i}`];
-    if (val && val.trim() && !val.includes('...')) {
+    if (val && val.trim() && !isPlaceholderKey(val.trim())) {
       keys.push(val.trim());
     }
   }
@@ -36,7 +56,7 @@ export function loadKeysFromEnv(prefix) {
   const bulk = process.env[`${prefix}_KEYS`];
   if (bulk) {
     for (const k of bulk.split(',')) {
-      if (k.trim() && !k.includes('...')) {
+      if (k.trim() && !isPlaceholderKey(k.trim())) {
         keys.push(k.trim());
       }
     }
@@ -63,10 +83,10 @@ function resolveKeys(providerConfig, envPrefix) {
     // Resolve env var references (e.g. "$OPENROUTER_KEY_1")
     if (k.startsWith('$')) {
       const envVal = process.env[k.slice(1)];
-      if (envVal && envVal.trim()) {
+      if (envVal && envVal.trim() && !isPlaceholderKey(envVal.trim())) {
         merged.push(envVal.trim());
       }
-    } else if (k.trim() && !k.includes('...')) {
+    } else if (k.trim() && !isPlaceholderKey(k.trim())) {
       merged.push(k.trim());
     }
   }

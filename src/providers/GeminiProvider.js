@@ -16,7 +16,7 @@ import { backoffSleep } from '../utils/backoff.js';
 import { estimateTokens } from '../utils/tokenEstimator.js';
 import { newCompletionId, newRequestId } from '../utils/idGenerator.js';
 
-const COOLING_STATUSES = new Set([429, 401, 403]);
+const COOLING_STATUSES = new Set([429, 401]);
 const TRANSIENT_STATUSES = new Set([500, 502, 503, 504]);
 const MAX_RETRIES = 2;
 
@@ -139,6 +139,23 @@ export class GeminiProvider extends BaseProvider {
             return { content: text, tokens, rawResponse: data, fromCache: false };
           }
 
+          // ── 403 Forbidden — smart handling ──────────────────────
+          if (response.status === 403) {
+            const body403 = await response.text().catch(() => '');
+            const lower = body403.toLowerCase();
+            const isModelErr = lower.includes('model') && (
+              lower.includes('not found') || lower.includes('not available') ||
+              lower.includes('does not exist') || lower.includes('is not supported')
+            );
+            if (isModelErr) {
+              const err = new Error(body403 || `Model "${model}" not available on Gemini (HTTP 403)`);
+              err.statusCode = 404;
+              throw err;
+            }
+            this.registry.onError(key, true, this.logger);
+            break;
+          }
+
           if (COOLING_STATUSES.has(response.status)) {
             this.registry.onError(key, true, this.logger);
             break;
@@ -205,6 +222,21 @@ export class GeminiProvider extends BaseProvider {
               const err = new Error(bodyText || `HTTP ${response.status}`);
               err.statusCode = response.status;
               throw err;
+            }
+            if (response.status === 403) {
+              const body403 = await response.text().catch(() => '');
+              const lower = body403.toLowerCase();
+              const isModelErr = lower.includes('model') && (
+                lower.includes('not found') || lower.includes('not available') ||
+                lower.includes('does not exist') || lower.includes('is not supported')
+              );
+              if (isModelErr) {
+                const err = new Error(body403 || `Model "${model}" not available on Gemini (HTTP 403)`);
+                err.statusCode = 404;
+                throw err;
+              }
+              this.registry.onError(key, true, this.logger);
+              break;
             }
             if (COOLING_STATUSES.has(response.status)) { this.registry.onError(key, true, this.logger); break; }
             this.registry.onError(key, false, this.logger);

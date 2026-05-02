@@ -104,9 +104,18 @@ export class RoutingEngine {
           }
         }
 
-        // If we found at least one provider via ModelRegistry, return ONLY those.
-        // No blind fallback to unrelated providers.
+        // If we found at least one provider via ModelRegistry, also add catch-all as last-resort.
+        // This ensures that if the owning provider's keys are exhausted, the catch-all
+        // (e.g. OpenRouter) can still handle the request via its aggregation.
         if (chain.length > 0) {
+          const catchAllId = this.config.modelRegistry?.catchAllProvider || 'openrouter';
+          const catchAllProvider = this.providerRegistry.get(catchAllId);
+          if (catchAllProvider && catchAllProvider.isAvailable()) {
+            const alreadyInChain = chain.some(t => t.provider.id === catchAllId);
+            if (!alreadyInChain) {
+              chain.push({ provider: catchAllProvider, model: requestedModel });
+            }
+          }
           return chain;
         }
       }
@@ -162,8 +171,8 @@ export class RoutingEngine {
       }
     }
 
-    for (const provider of providers) {
-      return { provider, model: this._resolveModel(requestedModel, provider) };
+    if (providers.length > 0) {
+      return { provider: providers[0], model: this._resolveModel(requestedModel, providers[0]) };
     }
 
     return null;
