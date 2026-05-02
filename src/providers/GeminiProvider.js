@@ -16,9 +16,10 @@ import { backoffSleep } from '../utils/backoff.js';
 import { estimateTokens } from '../utils/tokenEstimator.js';
 import { newCompletionId, newRequestId } from '../utils/idGenerator.js';
 
-const COOLING_STATUSES = new Set([429, 401]);
+const COOLING_STATUSES = new Set([429]);
 const TRANSIENT_STATUSES = new Set([500, 502, 503, 504]);
 const MAX_RETRIES = 2;
+const CIRCUIT_BREAKER_THRESHOLD = 3;
 
 export class GeminiProvider extends BaseProvider {
   constructor(config, deps = {}) {
@@ -94,7 +95,18 @@ export class GeminiProvider extends BaseProvider {
       throw Object.assign(new Error('No Gemini API keys configured.'), { statusCode: 503, type: 'provider_error' });
     }
 
+    let consecutiveFailStatus = 0;
+    let lastFailStatus = null;
+
     for (const key of keys) {
+      if (consecutiveFailStatus >= CIRCUIT_BREAKER_THRESHOLD) {
+        this.logger.warn({ requestId, model, status: lastFailStatus, keys_tried: consecutiveFailStatus },
+          `Circuit breaker: ${consecutiveFailStatus}x ${lastFailStatus}`);
+        const err = new Error(`All Gemini keys failing with HTTP ${lastFailStatus} for model "${model}"`);
+        err.statusCode = 503;
+        throw err;
+      }
+
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         const t0 = performance.now();
         try {
@@ -139,8 +151,8 @@ export class GeminiProvider extends BaseProvider {
             return { content: text, tokens, rawResponse: data, fromCache: false };
           }
 
-          // ── 403 Forbidden — smart handling ──────────────────────
-          if (response.status === 403) {
+          // ── 401/403 — smart handling ──────────────────────────
+          if (response.status === 401 || response.status === 403) {
             const body403 = await response.text().catch(() => '');
             const lower = body403.toLowerCase();
             const isModelErr = lower.includes('model') && (
@@ -148,15 +160,17 @@ export class GeminiProvider extends BaseProvider {
               lower.includes('does not exist') || lower.includes('is not supported')
             );
             if (isModelErr) {
-              const err = new Error(body403 || `Model "${model}" not available on Gemini (HTTP 403)`);
+              const err = new Error(body403 || `Model "${model}" not available on Gemini (HTTP ${response.status})`);
               err.statusCode = 404;
               throw err;
             }
+            if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
             this.registry.onError(key, true, this.logger);
             break;
           }
 
           if (COOLING_STATUSES.has(response.status)) {
+            if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
             this.registry.onError(key, true, this.logger);
             break;
           }
@@ -195,12 +209,20 @@ export class GeminiProvider extends BaseProvider {
     const { contents, systemInstruction } = GeminiProvider.toGeminiMessages(messages);
     const keys = this.registry ? this.registry.rankedKeys() : [];
 
+    let consecutiveFailStatus = 0;
+    let lastFailStatus = null;
+
     for (const key of keys) {
+      if (consecutiveFailStatus >= CIRCUIT_BREAKER_THRESHOLD) {
+        const err = new Error(`All Gemini keys failing with HTTP ${lastFailStatus}`);
+        err.statusCode = 503;
+        throw err;
+      }
+
       for (let attempt = 0; attempt < 2; attempt++) {
         const t0 = performance.now();
         try {
           const geminiModel = model || this.defaultModel;
-          // Sanitize key from logged URLs
           const url = `${this.baseUrl}/models/${geminiModel}:streamGenerateContent?key=${key}&alt=sse`;
 
           const body = { contents, generationConfig: {} };
@@ -223,7 +245,7 @@ export class GeminiProvider extends BaseProvider {
               err.statusCode = response.status;
               throw err;
             }
-            if (response.status === 403) {
+            if (response.status === 401 || response.status === 403) {
               const body403 = await response.text().catch(() => '');
               const lower = body403.toLowerCase();
               const isModelErr = lower.includes('model') && (
@@ -231,14 +253,18 @@ export class GeminiProvider extends BaseProvider {
                 lower.includes('does not exist') || lower.includes('is not supported')
               );
               if (isModelErr) {
-                const err = new Error(body403 || `Model "${model}" not available on Gemini (HTTP 403)`);
+                const err = new Error(body403 || `Model "${model}" not available on Gemini (HTTP ${response.status})`);
                 err.statusCode = 404;
                 throw err;
               }
+              if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
               this.registry.onError(key, true, this.logger);
               break;
             }
-            if (COOLING_STATUSES.has(response.status)) { this.registry.onError(key, true, this.logger); break; }
+            if (COOLING_STATUSES.has(response.status)) {
+              if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
+              this.registry.onError(key, true, this.logger); break;
+            }
             this.registry.onError(key, false, this.logger);
             await backoffSleep(attempt);
             continue;

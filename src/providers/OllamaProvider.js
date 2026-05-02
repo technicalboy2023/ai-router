@@ -11,14 +11,17 @@ import { backoffSleep } from '../utils/backoff.js';
 import { estimateTokens } from '../utils/tokenEstimator.js';
 import { newCompletionId, newRequestId } from '../utils/idGenerator.js';
 
-/** HTTP status codes that freeze the key (true rate-limit / auth issues) */
-const COOLING_STATUSES = new Set([429, 401, 402]);
+/** HTTP status codes that freeze the key (true rate-limit issues) */
+const COOLING_STATUSES = new Set([429, 402]);
 
 /** HTTP status codes worth retrying with the same key */
 const TRANSIENT_STATUSES = new Set([500, 502, 503, 504]);
 
 /** Maximum retries per key */
 const MAX_RETRIES = 2;
+
+/** If N consecutive keys fail with the same status, stop — it's systemic */
+const CIRCUIT_BREAKER_THRESHOLD = 3;
 
 /**
  * Check if an HTTP error body indicates the model is not found / not available.
@@ -111,7 +114,21 @@ export class OllamaProvider extends BaseProvider {
       throw Object.assign(new Error('No Ollama API keys configured.'), { statusCode: 503, type: 'provider_error' });
     }
 
+    let consecutiveFailStatus = 0;
+    let lastFailStatus = null;
+
     for (const key of keys) {
+      // ── Circuit breaker: if N keys fail with same status, it's systemic ──
+      if (consecutiveFailStatus >= CIRCUIT_BREAKER_THRESHOLD) {
+        this.logger.warn({
+          requestId, model, status: lastFailStatus,
+          keys_tried: consecutiveFailStatus,
+        }, `Circuit breaker: ${consecutiveFailStatus} consecutive ${lastFailStatus} errors — model likely unavailable`);
+        const err = new Error(`Model "${model}" not available on Ollama (${consecutiveFailStatus}x HTTP ${lastFailStatus})`);
+        err.statusCode = 404;
+        throw err;
+      }
+
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         const t0 = performance.now();
         try {
@@ -160,31 +177,36 @@ export class OllamaProvider extends BaseProvider {
             return { content: text, tokens, rawResponse: data, fromCache: false };
           }
 
-          // ── 403 Forbidden — could be model-not-found OR key issue ──
-          if (response.status === 403) {
+          // ── 401/403 — could be model-not-found OR key issue ─────
+          if (response.status === 401 || response.status === 403) {
             const bodyText = await response.text().catch(() => '');
-            // If the error is about the MODEL (not the key), stop immediately
-            // — trying more keys won't help, the model itself is unavailable
             if (isModelNotFoundError(bodyText)) {
               this.logger.warn({
-                requestId, model, status: 403,
+                requestId, model, status: response.status,
                 key_suffix: '…' + key.slice(-6),
-              }, 'Model not available on Ollama (403) — skipping remaining keys');
+              }, `Model not available on Ollama (${response.status}) — skipping remaining keys`);
               const err = new Error(bodyText || `Model "${model}" not available on Ollama`);
               err.statusCode = 404;
               throw err;
             }
-            // Otherwise treat as a genuine key auth issue
+            // Track consecutive same-status for circuit breaker
+            if (response.status === lastFailStatus) {
+              consecutiveFailStatus++;
+            } else {
+              lastFailStatus = response.status;
+              consecutiveFailStatus = 1;
+            }
             this.logger.warn({
               requestId, status: response.status,
               key_suffix: '…' + key.slice(-6),
-            }, 'Key cooling (403 auth)');
+            }, 'Key cooling');
             this.registry.onError(key, true, this.logger);
             break; // next key
           }
 
-          // ── Rate-limited / auth error → cool key, next ───────────
+          // ── Rate-limited → cool key, next ───────────────────────
           if (COOLING_STATUSES.has(response.status)) {
+            if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
             this.logger.warn({
               requestId, status: response.status,
               key_suffix: '…' + key.slice(-6),
@@ -264,7 +286,18 @@ export class OllamaProvider extends BaseProvider {
     const payload = this.buildPayload(messages, model, true, extraParams);
     const keys = this.registry.rankedKeys();
 
+    let consecutiveFailStatus = 0;
+    let lastFailStatus = null;
+
     for (const key of keys) {
+      if (consecutiveFailStatus >= CIRCUIT_BREAKER_THRESHOLD) {
+        this.logger.warn({ requestId, model, status: lastFailStatus, keys_tried: consecutiveFailStatus },
+          `Circuit breaker (stream): ${consecutiveFailStatus} consecutive ${lastFailStatus} errors`);
+        const err = new Error(`Model "${model}" not available on Ollama (${consecutiveFailStatus}x HTTP ${lastFailStatus})`);
+        err.statusCode = 404;
+        throw err;
+      }
+
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         const t0 = performance.now();
         try {
@@ -275,20 +308,22 @@ export class OllamaProvider extends BaseProvider {
             signal,
           });
 
-          // ── 403 Forbidden — check model-not-found before key cycling ──
-          if (response.status === 403) {
+          // ── 401/403 — check model-not-found before key cycling ──
+          if (response.status === 401 || response.status === 403) {
             const bodyText = await response.text().catch(() => '');
             if (isModelNotFoundError(bodyText)) {
-              this.logger.warn({ requestId, model, status: 403 }, 'Model not available on Ollama (stream) — skipping remaining keys');
+              this.logger.warn({ requestId, model, status: response.status }, `Model not available on Ollama (stream ${response.status}) — skipping remaining keys`);
               const err = new Error(bodyText || `Model "${model}" not available on Ollama`);
               err.statusCode = 404;
               throw err;
             }
+            if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
             this.registry.onError(key, true, this.logger);
-            break; // next key (auth issue)
+            break;
           }
 
           if (COOLING_STATUSES.has(response.status)) {
+            if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
             this.registry.onError(key, true, this.logger);
             break; // next key
           }
