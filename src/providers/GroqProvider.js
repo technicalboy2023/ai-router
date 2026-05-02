@@ -106,11 +106,13 @@ export class GroqProvider extends BaseProvider {
 
     let consecutiveFailStatus = 0;
     let lastFailStatus = null;
+    const cooledKeys = [];
 
     for (const key of keys) {
       if (consecutiveFailStatus >= CIRCUIT_BREAKER_THRESHOLD) {
-        this.logger.warn({ requestId, model, status: lastFailStatus, keys_tried: consecutiveFailStatus },
-          `Circuit breaker: ${consecutiveFailStatus}x ${lastFailStatus}`);
+        for (const k of cooledKeys) this.registry.uncool(k);
+        this.logger.warn({ requestId, model, status: lastFailStatus, keys_tried: consecutiveFailStatus, keys_restored: cooledKeys.length },
+          `Circuit breaker: ${consecutiveFailStatus}x ${lastFailStatus}, keys restored`);
         const err = new Error(`All Groq keys failing with HTTP ${lastFailStatus} for model "${model}"`);
         err.statusCode = 503;
         throw err;
@@ -179,6 +181,7 @@ export class GroqProvider extends BaseProvider {
             if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
             this.logger.warn({ requestId, status: response.status, key_suffix: '…' + key.slice(-6) }, 'Key cooling');
             this.registry.onError(key, true, this.logger);
+            cooledKeys.push(key);
             break;
           }
 
@@ -190,6 +193,7 @@ export class GroqProvider extends BaseProvider {
               key_suffix: '…' + key.slice(-6),
             }, 'Key cooling');
             this.registry.onError(key, true, this.logger);
+            cooledKeys.push(key);
             break; 
           }
 
@@ -263,9 +267,11 @@ export class GroqProvider extends BaseProvider {
 
     let consecutiveFailStatus = 0;
     let lastFailStatus = null;
+    const cooledKeys = [];
 
     for (const key of keys) {
       if (consecutiveFailStatus >= CIRCUIT_BREAKER_THRESHOLD) {
+        for (const k of cooledKeys) this.registry.uncool(k);
         const err = new Error(`All Groq keys failing with HTTP ${lastFailStatus}`);
         err.statusCode = 503;
         throw err;
@@ -295,12 +301,14 @@ export class GroqProvider extends BaseProvider {
             }
             if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
             this.registry.onError(key, true, this.logger);
+            cooledKeys.push(key);
             break;
           }
 
           if (COOLING_STATUSES.has(response.status)) {
             if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
             this.registry.onError(key, true, this.logger);
+            cooledKeys.push(key);
             break; 
           }
 

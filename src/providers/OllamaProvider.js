@@ -116,14 +116,17 @@ export class OllamaProvider extends BaseProvider {
 
     let consecutiveFailStatus = 0;
     let lastFailStatus = null;
+    const cooledKeys = []; // track keys cooled during this request
 
     for (const key of keys) {
       // ── Circuit breaker: if N keys fail with same status, it's systemic ──
       if (consecutiveFailStatus >= CIRCUIT_BREAKER_THRESHOLD) {
+        // Un-cool the keys we just cooled — model issue, not key issue
+        for (const k of cooledKeys) this.registry.uncool(k);
         this.logger.warn({
           requestId, model, status: lastFailStatus,
-          keys_tried: consecutiveFailStatus,
-        }, `Circuit breaker: ${consecutiveFailStatus} consecutive ${lastFailStatus} errors — model likely unavailable`);
+          keys_tried: consecutiveFailStatus, keys_restored: cooledKeys.length,
+        }, `Circuit breaker: ${consecutiveFailStatus} consecutive ${lastFailStatus} errors — model likely unavailable, keys restored`);
         const err = new Error(`Model "${model}" not available on Ollama (${consecutiveFailStatus}x HTTP ${lastFailStatus})`);
         err.statusCode = 404;
         throw err;
@@ -201,6 +204,7 @@ export class OllamaProvider extends BaseProvider {
               key_suffix: '…' + key.slice(-6),
             }, 'Key cooling');
             this.registry.onError(key, true, this.logger);
+            cooledKeys.push(key);
             break; // next key
           }
 
@@ -212,6 +216,7 @@ export class OllamaProvider extends BaseProvider {
               key_suffix: '…' + key.slice(-6),
             }, 'Key cooling');
             this.registry.onError(key, true, this.logger);
+            cooledKeys.push(key);
             break; // next key
           }
 
@@ -288,11 +293,13 @@ export class OllamaProvider extends BaseProvider {
 
     let consecutiveFailStatus = 0;
     let lastFailStatus = null;
+    const cooledKeys = [];
 
     for (const key of keys) {
       if (consecutiveFailStatus >= CIRCUIT_BREAKER_THRESHOLD) {
-        this.logger.warn({ requestId, model, status: lastFailStatus, keys_tried: consecutiveFailStatus },
-          `Circuit breaker (stream): ${consecutiveFailStatus} consecutive ${lastFailStatus} errors`);
+        for (const k of cooledKeys) this.registry.uncool(k);
+        this.logger.warn({ requestId, model, status: lastFailStatus, keys_tried: consecutiveFailStatus, keys_restored: cooledKeys.length },
+          `Circuit breaker (stream): ${consecutiveFailStatus} consecutive ${lastFailStatus} errors, keys restored`);
         const err = new Error(`Model "${model}" not available on Ollama (${consecutiveFailStatus}x HTTP ${lastFailStatus})`);
         err.statusCode = 404;
         throw err;
@@ -319,12 +326,14 @@ export class OllamaProvider extends BaseProvider {
             }
             if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
             this.registry.onError(key, true, this.logger);
+            cooledKeys.push(key);
             break;
           }
 
           if (COOLING_STATUSES.has(response.status)) {
             if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
             this.registry.onError(key, true, this.logger);
+            cooledKeys.push(key);
             break; // next key
           }
 

@@ -115,11 +115,13 @@ export class OpenRouterProvider extends BaseProvider {
 
     let consecutiveFailStatus = 0;
     let lastFailStatus = null;
+    const cooledKeys = [];
 
     for (const key of keys) {
       if (consecutiveFailStatus >= CIRCUIT_BREAKER_THRESHOLD) {
-        this.logger.warn({ requestId, model, status: lastFailStatus, keys_tried: consecutiveFailStatus },
-          `Circuit breaker: ${consecutiveFailStatus}x ${lastFailStatus} — stopping key rotation`);
+        for (const k of cooledKeys) this.registry.uncool(k);
+        this.logger.warn({ requestId, model, status: lastFailStatus, keys_tried: consecutiveFailStatus, keys_restored: cooledKeys.length },
+          `Circuit breaker: ${consecutiveFailStatus}x ${lastFailStatus} — stopping key rotation, keys restored`);
         const err = new Error(`All OpenRouter keys failing with HTTP ${lastFailStatus} for model "${model}"`);
         err.statusCode = lastFailStatus === 402 ? 402 : 503;
         throw err;
@@ -189,6 +191,7 @@ export class OpenRouterProvider extends BaseProvider {
             if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
             this.logger.warn({ requestId, status: response.status, key_suffix: '…' + key.slice(-6) }, 'Key cooling');
             this.registry.onError(key, true, this.logger);
+            cooledKeys.push(key);
             break;
           }
 
@@ -200,6 +203,7 @@ export class OpenRouterProvider extends BaseProvider {
               key_suffix: '…' + key.slice(-6),
             }, 'Key cooling');
             this.registry.onError(key, true, this.logger);
+            cooledKeys.push(key);
             break; // next key
           }
 
@@ -377,11 +381,13 @@ export class OpenRouterProvider extends BaseProvider {
 
     let consecutiveFailStatus = 0;
     let lastFailStatus = null;
+    const cooledKeys = [];
 
     for (const key of keys) {
       if (consecutiveFailStatus >= CIRCUIT_BREAKER_THRESHOLD) {
-        this.logger.warn({ requestId, model, status: lastFailStatus, keys_tried: consecutiveFailStatus },
-          `Circuit breaker (stream): ${consecutiveFailStatus}x ${lastFailStatus}`);
+        for (const k of cooledKeys) this.registry.uncool(k);
+        this.logger.warn({ requestId, model, status: lastFailStatus, keys_tried: consecutiveFailStatus, keys_restored: cooledKeys.length },
+          `Circuit breaker (stream): ${consecutiveFailStatus}x ${lastFailStatus}, keys restored`);
         const err = new Error(`All OpenRouter keys failing with HTTP ${lastFailStatus}`);
         err.statusCode = lastFailStatus === 402 ? 402 : 503;
         throw err;
@@ -412,12 +418,14 @@ export class OpenRouterProvider extends BaseProvider {
             }
             if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
             this.registry.onError(key, true, this.logger);
+            cooledKeys.push(key);
             break;
           }
 
           if (COOLING_STATUSES.has(response.status)) {
             if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
             this.registry.onError(key, true, this.logger);
+            cooledKeys.push(key);
             break; // next key
           }
 

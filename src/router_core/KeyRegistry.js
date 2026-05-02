@@ -123,6 +123,19 @@ export class KeyRegistry {
     }
   }
 
+  /**
+   * Lift cooldown from a key. Used by circuit breaker when failure is
+   * determined to be systemic (model unavailable), not per-key.
+   * @param {string} key
+   */
+  uncool(key) {
+    const kh = this._registry.get(key);
+    if (kh) {
+      kh.cooldownUntil = 0;
+      kh.consecutiveErrors = 0;
+    }
+  }
+
   // ── Introspection ───────────────────────────────────────────────────────
 
   /**
