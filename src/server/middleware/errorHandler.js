@@ -9,14 +9,8 @@ export function errorHandler(logger) {
   return (err, req, res, _next) => {
     const requestId = req.requestId || 'unknown';
 
-    const status = err.statusCode || err.status || 500;
-
     if (logger) {
-      if (status >= 400 && status < 500) {
-        logger.warn({ requestId, path: req.path, error: err.message, statusCode: status }, 'Request failed (Client Error)');
-      } else {
-        logger.error({ requestId, path: req.path, error: err.message, stack: err.stack }, 'Unhandled exception');
-      }
+      logger.error({ requestId, path: req.path, error: err.message, stack: err.stack }, 'Unhandled exception');
     }
 
     // If headers already sent, delegate to Express default handler
@@ -24,6 +18,7 @@ export function errorHandler(logger) {
       return _next(err);
     }
 
+    const status = err.statusCode || err.status || 500;
     res.status(status).json({
       error: {
         message: status === 500 ? 'Internal server error' : err.message,

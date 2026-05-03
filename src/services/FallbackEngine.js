@@ -48,7 +48,6 @@ export class FallbackEngine {
 
     let lastError = null;
     let fallbackValidationError = null;
-    const failureLog = []; // Track all failures for diagnostic logging
 
     for (let i = 0; i < targets.length; i++) {
       const { provider, model } = targets[i];
@@ -108,19 +107,15 @@ export class FallbackEngine {
           error_type: lastError.error.type
         }, 'FallbackEngine: target failed, checking for fallback');
 
-        failureLog.push({ provider: provider.id, model, error: lastError.error.message, type: lastError.error.type });
+        // Continue to next target in loop, regardless of whether it was a validation error, 
+        // rate limit, or exhaustion error, so multi-provider resiliency works fully.
 
         // Continue to next target in loop
       }
     }
 
     // If we exhaust all targets
-    this.logger.error({
-      requestId,
-      requestedModel,
-      targets_tried: targets.length,
-      failures: failureLog,
-    }, 'FallbackEngine: all fallbacks exhausted');
+    this.logger.error({ requestId, requestedModel, targets_tried: targets.length }, 'FallbackEngine: all fallbacks exhausted');
     
     // If ANY provider failed due to a Validation Error (Client Error, 400/404),
     // and all fallbacks have failed, bubbling up the validation error is significantly more

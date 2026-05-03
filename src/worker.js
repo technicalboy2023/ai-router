@@ -102,16 +102,6 @@ async function start() {
   const server = app.listen(port, host, () => {
     logger.info(`Server listening on http://${host}:${port}`);
     logger.info(`Available providers: ${providerRegistry.size}`);
-
-    // Log key inventory for each provider — helps debug missing/placeholder key issues
-    for (const [id, provider] of providerRegistry.getAll()) {
-      const keyCount = provider.registry ? provider.registry.rankedKeys().length : 0;
-      if (keyCount === 0) {
-        logger.warn({ provider: id }, `Provider "${id}" has 0 valid API keys — requests will fail`);
-      } else {
-        logger.info({ provider: id, keys: keyCount }, `Provider "${id}": ${keyCount} valid key(s) loaded`);
-      }
-    }
   });
 
   // ── Background Tasks ────────────────────────────────────────────────────────

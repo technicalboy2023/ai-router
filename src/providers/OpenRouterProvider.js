@@ -10,8 +10,7 @@
  *  • Weighted key selection (health-score based)
  *  • Multi-layer retry: same-key → next key → exhaustion
  *  • Exponential back-off between same-key retries
- *  • Auto-cooldown for rate-limited keys (429/402)
- *  • Smart 403 handling: model-not-found → fast fail, auth → cooldown
+ *  • Auto-cooldown for rate-limited / forbidden keys (429/402/403)
  *  • 5xx transient retry with backoff
  *  • Token extraction from API response
  *  • Synthetic error chunk on stream exhaustion
@@ -25,16 +24,13 @@ import { estimateTokens } from '../utils/tokenEstimator.js';
 import { newCompletionId, newRequestId } from '../utils/idGenerator.js';
 
 /** HTTP status codes that freeze the key */
-const COOLING_STATUSES = new Set([429, 402]);
+const COOLING_STATUSES = new Set([429, 401, 402, 403]);
 
 /** HTTP status codes worth retrying with the same key */
 const TRANSIENT_STATUSES = new Set([500, 502, 503, 504]);
 
 /** Maximum retries per key */
 const MAX_RETRIES = 2;
-
-/** If N consecutive keys fail with the same status, stop */
-const CIRCUIT_BREAKER_THRESHOLD = 3;
 
 export class OpenRouterProvider extends BaseProvider {
   constructor(config, deps = {}) {
@@ -113,20 +109,7 @@ export class OpenRouterProvider extends BaseProvider {
       throw Object.assign(new Error('No OpenRouter API keys configured.'), { statusCode: 503, type: 'provider_error' });
     }
 
-    let consecutiveFailStatus = 0;
-    let lastFailStatus = null;
-    const cooledKeys = [];
-
     for (const key of keys) {
-      if (consecutiveFailStatus >= CIRCUIT_BREAKER_THRESHOLD) {
-        for (const k of cooledKeys) this.registry.uncool(k);
-        this.logger.warn({ requestId, model, status: lastFailStatus, keys_tried: consecutiveFailStatus, keys_restored: cooledKeys.length },
-          `Circuit breaker: ${consecutiveFailStatus}x ${lastFailStatus} — stopping key rotation, keys restored`);
-        const err = new Error(`All OpenRouter keys failing with HTTP ${lastFailStatus} for model "${model}"`);
-        err.statusCode = lastFailStatus === 402 ? 402 : 503;
-        throw err;
-      }
-
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         const t0 = performance.now();
         try {
@@ -175,35 +158,13 @@ export class OpenRouterProvider extends BaseProvider {
             return { content: text, tokens, rawResponse: data, fromCache: false };
           }
 
-          // ── 401/403 Forbidden — smart handling ──────────────────
-          if (response.status === 401 || response.status === 403) {
-            const body403 = await response.text().catch(() => '');
-            const lower = body403.toLowerCase();
-            const isModelErr = lower.includes('model') && (
-              lower.includes('not found') || lower.includes('not available') ||
-              lower.includes('does not exist') || lower.includes('invalid')
-            );
-            if (isModelErr) {
-              const err = new Error(body403 || `Model "${model}" not available (HTTP ${response.status})`);
-              err.statusCode = 404;
-              throw err;
-            }
-            if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
-            this.logger.warn({ requestId, status: response.status, key_suffix: '…' + key.slice(-6) }, 'Key cooling');
-            this.registry.onError(key, true, this.logger);
-            cooledKeys.push(key);
-            break;
-          }
-
-          // ── Rate-limited → cool key, next ───────────────────────
+          // ── Rate-limited / forbidden → cool key, next ───────────
           if (COOLING_STATUSES.has(response.status)) {
-            if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
             this.logger.warn({
               requestId, status: response.status,
               key_suffix: '…' + key.slice(-6),
             }, 'Key cooling');
             this.registry.onError(key, true, this.logger);
-            cooledKeys.push(key);
             break; // next key
           }
 
@@ -300,7 +261,7 @@ export class OpenRouterProvider extends BaseProvider {
               status: 200, key_suffix: '…' + key.slice(-6),
             }, 'Embeddings call succeeded');
 
-            this.registry.onSuccess(key, latency, tokens);
+            this.registry.onSuccess(key, latency, this.logger, tokens);
 
             return data;
           }
@@ -379,20 +340,7 @@ export class OpenRouterProvider extends BaseProvider {
     const payload = this.buildPayload(messages, model, true, extraParams);
     const keys = this.registry.rankedKeys();
 
-    let consecutiveFailStatus = 0;
-    let lastFailStatus = null;
-    const cooledKeys = [];
-
     for (const key of keys) {
-      if (consecutiveFailStatus >= CIRCUIT_BREAKER_THRESHOLD) {
-        for (const k of cooledKeys) this.registry.uncool(k);
-        this.logger.warn({ requestId, model, status: lastFailStatus, keys_tried: consecutiveFailStatus, keys_restored: cooledKeys.length },
-          `Circuit breaker (stream): ${consecutiveFailStatus}x ${lastFailStatus}, keys restored`);
-        const err = new Error(`All OpenRouter keys failing with HTTP ${lastFailStatus}`);
-        err.statusCode = lastFailStatus === 402 ? 402 : 503;
-        throw err;
-      }
-
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         const t0 = performance.now();
         try {
@@ -403,29 +351,8 @@ export class OpenRouterProvider extends BaseProvider {
             signal,
           });
 
-          // ── 401/403 — smart handling ──────────────────────────
-          if (response.status === 401 || response.status === 403) {
-            const body403 = await response.text().catch(() => '');
-            const lower = body403.toLowerCase();
-            const isModelErr = lower.includes('model') && (
-              lower.includes('not found') || lower.includes('not available') ||
-              lower.includes('does not exist') || lower.includes('invalid')
-            );
-            if (isModelErr) {
-              const err = new Error(body403 || `Model "${model}" not available (HTTP ${response.status})`);
-              err.statusCode = 404;
-              throw err;
-            }
-            if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
-            this.registry.onError(key, true, this.logger);
-            cooledKeys.push(key);
-            break;
-          }
-
           if (COOLING_STATUSES.has(response.status)) {
-            if (response.status === lastFailStatus) { consecutiveFailStatus++; } else { lastFailStatus = response.status; consecutiveFailStatus = 1; }
             this.registry.onError(key, true, this.logger);
-            cooledKeys.push(key);
             break; // next key
           }
 
